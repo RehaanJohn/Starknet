@@ -1,0 +1,1 @@
+{"version":1,"contracts":[{"id":"3jf6ppi6ssoj8","package_name":"vault","contract_name":"Vault","module_path":"vault::vault::Vault","artifacts":{"sierra":"vault_Vault.contract_class.json","casm":null}}]}

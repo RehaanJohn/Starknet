@@ -17,14 +17,14 @@ trait IVault<TContractState> {
 #[starknet::contract]
 mod Vault {
     use starknet::{ContractAddress, get_caller_address};
-    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess, Map};
 
     #[storage]
     struct Storage {
         owner: ContractAddress,
         hot_wallet: ContractAddress,
-        chipi_balance_low: LegacyMap<ContractAddress, u128>,
-        chipi_balance_high: LegacyMap<ContractAddress, u128>,
+        chipi_balance_low: Map<ContractAddress, u128>,
+        chipi_balance_high: Map<ContractAddress, u128>,
         frozen: bool,
     }
 
@@ -118,7 +118,9 @@ mod Vault {
             let (new_low, borrow) = if current_low >= amount_low {
                 (current_low - amount_low, 0_u128)
             } else {
-                (0x100000000000000000000000000000000_u128 + current_low - amount_low, 1_u128)
+                // Handle borrow from high part
+                let max_u128: u128 = 340282366920938463463374607431768211455;
+                (max_u128 - amount_low + current_low + 1, 1_u128)
             };
             let new_high = current_high - amount_high - borrow;
 
@@ -139,7 +141,8 @@ mod Vault {
             assert(caller == contract_owner, 'Only owner can revoke');
             
             let hot = self.hot_wallet.read();
-            self.hot_wallet.write(starknet::contract_address_const::<0>());
+            let zero_address: ContractAddress = 0.try_into().unwrap();
+            self.hot_wallet.write(zero_address);
             self.emit(HotWalletRevoked { hot_wallet: hot });
         }
 

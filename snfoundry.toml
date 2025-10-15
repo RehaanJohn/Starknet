@@ -1,0 +1,3 @@
+[sncast.sepolia]
+account = "deployer-new"
+url = "https://cloud.argent-api.com/v1/starknet/sepolia/rpc/v0.9"

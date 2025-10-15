@@ -26,7 +26,7 @@ export default function ChipiPayment({ userId, bearerToken, chipiWallet }: Chipi
 
   const { transferAsync, isLoading } = useTransfer();
   // Chipi wallet balance (returns STRK-like human number)
-  const { balance: chipiBalance, loading: chipiBalanceLoading } = useBalance({ address: chipiWallet?.address || null });
+  const { balanceHuman: chipiBalance, loading: chipiBalanceLoading } = useBalance({ address: chipiWallet?.address || null });
   // Braavos balance (STRK)
   const { balanceHuman: braavosBalanceHuman, loading: braavosBalanceLoading } = useBraavosBalance();
   // Use security hook

@@ -5,6 +5,7 @@ import { useTransfer } from '@chipi-stack/nextjs';
 import { Send, Loader2, Shield, AlertTriangle } from 'lucide-react';
 import { useWalletSecurity } from '@/hooks/useWalletSecurity';
 import { useBalance } from '@/hooks/useBalance';
+import { useBraavosBalance } from '@/hooks/useBraavosBalance';
 import TransactionConfirmation from './TransactionConfirmation';
 
 interface ChipiPaymentProps {
@@ -24,7 +25,10 @@ export default function ChipiPayment({ userId, bearerToken, chipiWallet }: Chipi
   const [pendingTransactionId, setPendingTransactionId] = useState<string | null>(null);
 
   const { transferAsync, isLoading } = useTransfer();
-  
+  // Chipi wallet balance (returns STRK-like human number)
+  const { balance: chipiBalance, loading: chipiBalanceLoading } = useBalance({ address: chipiWallet?.address || null });
+  // Braavos balance (STRK)
+  const { balanceHuman: braavosBalanceHuman, loading: braavosBalanceLoading } = useBraavosBalance();
   // Use security hook
   const {
     isFrozen,
@@ -113,8 +117,6 @@ export default function ChipiPayment({ userId, bearerToken, chipiWallet }: Chipi
       setEncryptKey('');
       setPendingTransactionId(null);
     } catch (error: any) {
-      // track Chipi wallet balance to ensure wallet max isn't exceeded
-      const { balance: chipiBalance } = useBalance({ address: chipiWallet?.address || null });
       console.error('Payment error:', error);
       setError(error.message || 'Failed to send payment');
       
@@ -141,6 +143,28 @@ export default function ChipiPayment({ userId, bearerToken, chipiWallet }: Chipi
       <div className="flex items-center gap-2 mb-4">
         <Send className="w-5 h-5 text-emerald-400" />
         <h3 className="text-xl font-bold text-emerald-400">Send Payment</h3>
+      </div>
+
+      {/* Chipi Wallet Balance */}
+      <div className="mb-4 text-sm text-gray-300">
+        <p className="font-semibold text-emerald-300">Chipi Wallet</p>
+        <div className="flex items-center gap-4">
+          {chipiBalanceLoading ? (
+            <p className="text-xs text-gray-400">Loading balance...</p>
+          ) : chipiBalance != null ? (
+            <p className="text-xs text-gray-200">Chipi: {chipiBalance.toFixed(6)} STRK</p>
+          ) : (
+            <p className="text-xs text-gray-400">Chipi: —</p>
+          )}
+
+          {braavosBalanceLoading ? (
+            <p className="text-xs text-gray-400">Checking Braavos...</p>
+          ) : braavosBalanceHuman != null ? (
+            <p className="text-xs text-gray-200">Braavos: {braavosBalanceHuman.toFixed(6)} STRK</p>
+          ) : (
+            <p className="text-xs text-gray-400">Braavos: —</p>
+          )}
+        </div>
       </div>
 
       {error && (

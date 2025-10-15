@@ -2,12 +2,10 @@
 
 import React from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
-import { Shield, Users, Building2, Mail, Lock, User, ArrowRight } from "lucide-react"
+import { Shield } from "lucide-react"
 import { SignIn } from "@clerk/nextjs"
 
 export default function AuthPage() {
-  // Redirect to Clerk's prebuilt sign in/up UI
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-emerald-950 to-gray-900 text-white flex items-center justify-center p-4">
       <div className="w-full max-w-6xl grid lg:grid-cols-2 gap-8 items-center">
@@ -23,6 +21,10 @@ export default function AuthPage() {
         </div>
 
         <div className="bg-gray-900/50 backdrop-blur-xl border border-emerald-900/30 rounded-3xl p-8 lg:p-10">
+          {/*
+            Using a catch-all route allows Clerk's <SignIn/> to mount correctly.
+            routing="path" tells the component to use path-based routing.
+          */}
           <SignIn routing="path" path="/auth" />
         </div>
       </div>

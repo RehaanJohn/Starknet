@@ -54,3 +54,10 @@ export function uint256ToDecimalString(lowHex: string, highHex: string, decimals
   const fracStr = frac.toString().padStart(decimals, '0').replace(/0+$/,'');
   return fracStr ? `${whole.toString()}.${fracStr}` : whole.toString();
 }
+
+export function uint256ToBigInt(lowHex: string, highHex: string) {
+  const low = BigInt(lowHex);
+  const high = BigInt(highHex);
+  const TWO_128 = BigInt(2) ** BigInt(128);
+  return high * TWO_128 + low;
+}

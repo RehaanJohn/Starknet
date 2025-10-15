@@ -1,20 +1,10 @@
 import { useEffect, useState } from 'react';
+
 import { getErc20Balance } from '@/lib/stark';
 
 const DEFAULT_STRK = '0x04718f5a0Fc34cC1AF16A1cdee98fFB20C31f5cD61D6Ab07201858f4287c938D';
 
-/**
- * useBalance
- * - Polls Chipi wallet balance (simple implementation using provided SDK hooks or window.chipi)
- * - Falls back to local state if SDK is unavailable
- * - Returns balance (in STRK), loading state, and a refresh function
- *
- * Notes:
- * - This is a small client-side helper. For robust production use, prefer server-side balance monitoring
- *   and/or periodic background workers that reconcile on-chain state.
- */
-
-export function useBalance({ tokenAddress = DEFAULT_STRK, pollInterval = 15000, address }: { tokenAddress?: string; pollInterval?: number; address?: string | null }) {
+export function useBraavosBalance({ tokenAddress = DEFAULT_STRK, pollInterval = 15000 } = {}) {
   const [balanceBig, setBalanceBig] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -23,14 +13,16 @@ export function useBalance({ tokenAddress = DEFAULT_STRK, pollInterval = 15000, 
     let timer: number | undefined;
 
     async function refresh() {
-      if (!address || typeof window === 'undefined' || !(window as any).chipi) {
+      if (typeof window === 'undefined' || !(window as any).starknet_braavos) {
         if (mounted) setBalanceBig(null);
         return;
       }
 
       setLoading(true);
       try {
-        const provider = (window as any).chipi.provider;
+        const provider = (window as any).starknet_braavos.provider;
+        const accountObj = (window as any).starknet_braavos.account;
+        const address = accountObj?.address || (await (window as any).starknet_braavos.enable())[0];
         const bal = await getErc20Balance(provider, tokenAddress, address);
         if (mounted) setBalanceBig(bal ?? BigInt(0));
       } catch (err) {
@@ -46,7 +38,7 @@ export function useBalance({ tokenAddress = DEFAULT_STRK, pollInterval = 15000, 
       mounted = false;
       if (timer) clearInterval(timer);
     };
-  }, [tokenAddress, pollInterval, address]);
+  }, [tokenAddress, pollInterval]);
 
   const human = balanceBig != null ? Number(balanceBig) / 1e18 : null;
 

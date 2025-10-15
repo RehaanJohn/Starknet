@@ -8,8 +8,9 @@ Only one item below is marked completed and shows where it is located in the rep
   - Location: `src/lib/security-config.ts` and `src/hooks/useWalletSecurity.ts`
   - Notes: Core security limits, validation functions, and the `useWalletSecurity` hook were implemented.
 
-- [ ] 2) Implement Balance Tracking System
-  - Planned location: `src/hooks/useBalance.ts` (new); integrate into `src/components/ChipiPayment.tsx`
+- [x] 2) Implement Balance Tracking System — COMPLETED
+  - Location: `src/hooks/useBalance.ts`
+  - Notes: Balance tracking for Chipi wallet implemented using `getErc20Balance`.
 
 - [ ] 3) Add Transaction Limits & Rate Limiting
   - Planned location: `src/hooks/useWalletSecurity.ts`, `src/components/ChipiPayment.tsx`

@@ -5,11 +5,15 @@
  * to their Chipi wallet with amount validation and warnings
  */
 
-'use client';
+"use client";
 
 import React, { useState } from 'react';
 import { ArrowRight, Wallet, CreditCard, AlertTriangle, Shield, Loader2 } from 'lucide-react';
 import { DEFAULT_SECURITY_LIMITS } from '@/lib/security-config';
+import { strToUint256Hex } from '@/lib/uint256';
+import DevUintDebug from './DevUintDebug';
+import { getErc20Balance } from '@/lib/stark';
+import { useBraavosBalance } from '@/hooks/useBraavosBalance';
 
 interface BraavosToChipiTransferProps {
   braavosAddress: string;
@@ -22,13 +26,20 @@ export default function BraavosToChipiTransfer({
   chipiPublicKey,
   onTransferComplete,
 }: BraavosToChipiTransferProps) {
+  const DEFAULT_TOKEN = '0x04718f5a0Fc34cC1AF16A1cdee98fFB20C31f5cD61D6Ab07201858f4287c938D';
+
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showWarning, setShowWarning] = useState(false);
+  const [tokenAddress, setTokenAddress] = useState(DEFAULT_TOKEN);
+  const [diagnostics, setDiagnostics] = useState<string[]>([]);
 
   const maxSafeAmount = DEFAULT_SECURITY_LIMITS.maxWalletBalance;
+
+  // Braavos on-chain STRK balance (auto-updating)
+  const { balanceBig: braavosBalanceBig, balanceHuman: braavosBalanceHuman, loading: braavosBalanceLoading } = useBraavosBalance({ tokenAddress });
 
   const handleTransfer = async () => {
     setError('');
@@ -54,33 +65,58 @@ export default function BraavosToChipiTransfer({
         throw new Error('Braavos wallet not found');
       }
 
-      // Prepare transaction
-      // Use BigInt to build a proper Uint256 (low, high) split (128-bit limbs)
-      const amountWei = BigInt(Math.floor(amountNum * 1e18));
-  const TWO_128 = BigInt(2) ** BigInt(128);
-  const low = amountWei % TWO_128;
-  const high = amountWei / TWO_128;
+      // Prepare transaction using shared uint256 helper
+      const { low, high, amountWei } = strToUint256Hex(amountNum.toString(), 18);
 
-      console.log('Preparing transfer:', {
-        amountNum,
-        amountWei: amountWei.toString(),
-        low: '0x' + low.toString(16),
-        high: '0x' + high.toString(16),
-      });
+      console.log('Preparing transfer via helper:', { amountNum, amountWei, low, high });
 
-      const calls = [{
-        contractAddress: '0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7', // ETH contract on Starknet
-        entrypoint: 'transfer',
-        calldata: [
-          chipiPublicKey, // recipient
-          '0x' + low.toString(16), // low limb
-          '0x' + high.toString(16), // high limb
-        ],
-      }];
+      // Use the token address configured in the form (default = provided STRK token)
+      const tokenForTransfer = tokenAddress || DEFAULT_TOKEN;
+
+      const calls = [
+        {
+          contractAddress: tokenForTransfer,
+          entrypoint: 'transfer',
+          calldata: [chipiPublicKey, low, high],
+        },
+      ];
+
+      setDiagnostics((d: string[]) => [...d, `Using token ${tokenForTransfer}`]);
+
+      // Check on-chain balance before executing to avoid u256 underflow
+      const braavosProvider = (window as any).starknet_braavos.provider;
+      const braavosAccountObj = (window as any).starknet_braavos.account;
+      const { uint256ToBigInt } = await import('@/lib/uint256');
+      const { getErc20Balance } = await import('@/lib/stark');
+
+      const braavosAddr = braavosAccountObj?.address || (await (window as any).starknet_braavos.enable())[0];
+      const balanceBig = await getErc20Balance(braavosProvider, tokenForTransfer, braavosAddr);
+      const amountBig = uint256ToBigInt(low, high);
+
+      // Avoid using Number(...) on BigInt if balance is large; convert for human display safely
+      const balanceHuman = Number(balanceBig) / 1e18;
+      const amountHuman = Number(amountBig) / 1e18;
+      console.log('=== BALANCE CHECK ===');
+      console.log('Braavos address:', braavosAddr);
+      console.log('On-chain balance (raw):', balanceBig.toString());
+      setDiagnostics((d: string[]) => [...d, `on-chain balance (raw bigint): ${balanceBig.toString()}`]);
+      console.log('On-chain balance (STRK):', balanceHuman.toFixed(6));
+      console.log('Amount to send (raw):', amountBig.toString());
+      console.log('Amount to send (STRK):', amountHuman.toFixed(6));
+      console.log('Has enough?', balanceBig >= amountBig);
+
+      if (balanceBig < amountBig) {
+        throw new Error(
+          `Insufficient STRK balance in Braavos wallet.\n` +
+          `Available: ${balanceHuman.toFixed(6)} STRK\n` +
+          `Needed: ${amountHuman.toFixed(6)} STRK\n\n` +
+          `Please fund your Braavos wallet with STRK tokens first. ` +
+          `You can get testnet STRK from a faucet or bridge funds from another wallet.`
+        );
+      }
 
       // Execute transaction through Braavos
       const tx = await window.starknet_braavos.account.execute(calls);
-      
       console.log('Transfer initiated:', tx);
       setSuccess(`Successfully transferred ${amount} STRK to Chipi wallet!`);
       setAmount('');
@@ -100,6 +136,32 @@ export default function BraavosToChipiTransfer({
 
   const handleCancel = () => {
     setShowWarning(false);
+  };
+
+  const handleCheckBalance = async () => {
+    setError('');
+    setIsLoading(true);
+    try {
+      if (typeof window === 'undefined' || !window.starknet_braavos) {
+        throw new Error('Braavos wallet not found');
+      }
+
+      const braavosProvider = (window as any).starknet_braavos.provider;
+      const braavosAccountObj = (window as any).starknet_braavos.account;
+      const { getErc20Balance } = await import('@/lib/stark');
+
+      const braavosAddr = braavosAccountObj?.address || (await (window as any).starknet_braavos.enable())[0];
+      const tokenForCheck = tokenAddress || DEFAULT_TOKEN;
+      setDiagnostics((d: string[]) => [...d, `Checking balance for ${tokenForCheck} on ${braavosAddr}`]);
+
+      const balanceBig = await getErc20Balance(braavosProvider, tokenForCheck, braavosAddr);
+      const balanceHuman = Number(balanceBig) / 1e18;
+      setDiagnostics((d: string[]) => [...d, `Balance: ${balanceBig.toString()} (${balanceHuman.toFixed(6)} STRK)`]);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to check balance');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -147,9 +209,14 @@ export default function BraavosToChipiTransfer({
               <Wallet className="w-4 h-4 text-orange-400" />
               <p className="text-xs text-gray-400">From: Braavos</p>
             </div>
-            <p className="text-sm text-orange-400 font-mono break-all">
-              {braavosAddress.slice(0, 8)}...{braavosAddress.slice(-6)}
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-orange-400 font-mono break-all">
+                {braavosAddress.slice(0, 8)}...{braavosAddress.slice(-6)}
+              </p>
+              <p className="text-xs text-gray-400">
+                {braavosBalanceLoading ? 'Checking...' : (braavosBalanceHuman != null ? `${braavosBalanceHuman.toFixed(4)} STRK` : '—')}
+              </p>
+            </div>
           </div>
 
           <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
@@ -238,6 +305,28 @@ export default function BraavosToChipiTransfer({
             )}
           </button>
         )}
+
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={handleCheckBalance}
+            disabled={isLoading}
+            className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm font-semibold hover:bg-gray-600 transition-all disabled:opacity-50"
+          >
+            Check balance
+          </button>
+
+          <input
+            className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-xs"
+            value={tokenAddress}
+            onChange={(e) => setTokenAddress(e.target.value)}
+            placeholder="Token contract address (STRK)"
+          />
+        </div>
+
+          {/* Dev debug info for Uint256 encoding */}
+          <div className="mt-3">
+            <DevUintDebug amount={amount} />
+          </div>
       </div>
 
       {/* Info Box */}

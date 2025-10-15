@@ -1,12 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useSendTransaction } from '@chipi-stack/nextjs';
-import { Send, Loader2 } from 'lucide-react';
+import { useTransfer } from '@chipi-stack/nextjs';
+import { Send, Loader2, Shield, AlertTriangle } from 'lucide-react';
+import { useWalletSecurity } from '@/hooks/useWalletSecurity';
+import { useBalance } from '@/hooks/useBalance';
+import TransactionConfirmation from './TransactionConfirmation';
 
 interface ChipiPaymentProps {
   userId: string;
-  bearerToken: string;
+  bearerToken?: string;
   chipiWallet: any;
 }
 
@@ -17,10 +20,22 @@ export default function ChipiPayment({ userId, bearerToken, chipiWallet }: Chipi
   const [encryptKey, setEncryptKey] = useState('');
   const [txHash, setTxHash] = useState('');
   const [error, setError] = useState('');
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [pendingTransactionId, setPendingTransactionId] = useState<string | null>(null);
 
-  const { sendTransactionAsync, isLoading } = useSendTransaction();
+  const { transferAsync, isLoading } = useTransfer();
+  
+  // Use security hook
+  const {
+    isFrozen,
+    dailySpent,
+    validateTransactionSecurity,
+    recordTransaction,
+    updateTransactionStatus,
+    limits,
+  } = useWalletSecurity();
 
-  const handleSendPayment = async () => {
+  const initiatePayment = async () => {
     setError('');
     setTxHash('');
 
@@ -29,29 +44,85 @@ export default function ChipiPayment({ userId, bearerToken, chipiWallet }: Chipi
       return;
     }
 
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      setError('Please enter a valid amount');
+      return;
+    }
+
+    // Validate transaction against security rules
+    const validation = validateTransactionSecurity(amountNum);
+    
+    if (!validation.valid) {
+      setError(validation.reason || 'Transaction validation failed');
+      return;
+    }
+
+    // If validation requires confirmation, show modal
+    if (validation.requiresConfirmation) {
+      setShowConfirmation(true);
+      return;
+    }
+
+    // Otherwise, proceed directly
+    await executeSendPayment();
+  };
+
+  const executeSendPayment = async () => {
+    setShowConfirmation(false);
+    const amountNum = parseFloat(amount);
+
     try {
-      const response = await sendTransactionAsync({
-        params: {
-          encryptKey,
-          externalUserId: userId,
-          to: recipientAddress,
-          amount,
-          tokenAddress: tokenAddress || undefined, // Optional: leave empty for native token
-        },
-        bearerToken,
+      // Record transaction (returns transaction ID)
+      const txId = recordTransaction(amountNum, recipientAddress);
+      setPendingTransactionId(txId);
+
+      // Prepare transfer params
+      const params: any = {
+        encryptKey,
+        wallet: chipiWallet,
+        recipient: recipientAddress,
+        amount,
+      };
+
+      if (tokenAddress) {
+        params.token = 'OTHER';
+        params.otherToken = { contractAddress: tokenAddress, decimals: 18 };
+      } else {
+        params.token = 'ETH';
+      }
+
+      const txHash = await transferAsync({
+        params,
+        bearerToken: bearerToken || '',
       });
 
-      console.log('Transaction successful:', response);
-      setTxHash(response.txHash || 'Transaction sent');
+      const hashString = typeof txHash === 'string' ? txHash : 'Transaction sent';
+      console.log('Transaction successful:', hashString);
+      setTxHash(hashString);
+
+      // Update transaction status to success
+      if (txId) {
+        updateTransactionStatus(txId, 'success', hashString);
+      }
       
       // Clear form
       setRecipientAddress('');
       setAmount('');
       setTokenAddress('');
       setEncryptKey('');
+      setPendingTransactionId(null);
     } catch (error: any) {
+      // track Chipi wallet balance to ensure wallet max isn't exceeded
+      const { balance: chipiBalance } = useBalance({ address: chipiWallet?.address || null });
       console.error('Payment error:', error);
       setError(error.message || 'Failed to send payment');
+      
+      // Update transaction status to failed
+      if (pendingTransactionId) {
+        updateTransactionStatus(pendingTransactionId, 'failed');
+      }
+      setPendingTransactionId(null);
     }
   };
 
@@ -142,8 +213,8 @@ export default function ChipiPayment({ userId, bearerToken, chipiWallet }: Chipi
         </div>
 
         <button
-          onClick={handleSendPayment}
-          disabled={isLoading}
+          onClick={initiatePayment}
+          disabled={isLoading || isFrozen}
           className="w-full bg-emerald-500 text-gray-900 px-6 py-3 rounded-lg font-semibold hover:bg-emerald-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isLoading ? (
@@ -160,12 +231,48 @@ export default function ChipiPayment({ userId, bearerToken, chipiWallet }: Chipi
         </button>
       </div>
 
-      <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 mt-4">
-        <p className="text-xs text-gray-400">
-          <span className="font-semibold text-emerald-400">Note:</span> Transactions on Chipi Pay are gasless. 
-          Your payment will be processed without requiring gas fees from your wallet.
-        </p>
+      {/* Security Info */}
+      <div className="space-y-2">
+        <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Shield className="w-4 h-4 text-emerald-400" />
+            <p className="text-xs font-semibold text-emerald-400">Security Limits Active</p>
+          </div>
+          <div className="text-xs text-gray-400 space-y-1">
+            <p>• Max per transaction: {limits.maxTransactionAmount} STRK</p>
+            <p>• Daily limit: {limits.dailySpendingLimit} STRK (Spent today: {dailySpent.toFixed(2)} STRK)</p>
+            <p>• Rate limit: {limits.maxTransactionsPerHour} transactions/hour</p>
+          </div>
+        </div>
+
+        {isFrozen && (
+          <div className="bg-red-500/10 border border-red-500 rounded-lg p-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              <p className="text-xs font-semibold text-red-400">Wallet Frozen</p>
+            </div>
+            <p className="text-xs text-red-300 mt-1">
+              Transactions are disabled for security reasons. Go to settings to unfreeze.
+            </p>
+          </div>
+        )}
+
+        <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+          <p className="text-xs text-gray-400">
+            <span className="font-semibold text-emerald-400">Gasless:</span> Transactions on Chipi Pay don't require gas fees from your wallet.
+          </p>
+        </div>
       </div>
+
+      {/* Transaction Confirmation Modal */}
+      <TransactionConfirmation
+        isOpen={showConfirmation}
+        amount={amount}
+        recipient={recipientAddress}
+        onConfirm={executeSendPayment}
+        onCancel={() => setShowConfirmation(false)}
+        loading={isLoading}
+      />
     </div>
   );
 }

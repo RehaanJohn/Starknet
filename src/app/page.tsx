@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { Shield, Users, Globe, Wallet, CreditCard } from 'lucide-react';
-import { useCreateWallet, useGetWallet } from '@chipi-stack/nextjs';
-import { supabase } from '@/lib/supabase';
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { Shield, Users, Globe, Wallet, CreditCard } from "lucide-react";
+import { useCreateWallet, useGetWallet } from "@chipi-stack/nextjs";
+import { useUser, useAuth } from "@clerk/nextjs";
 
 export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
@@ -17,9 +17,18 @@ export default function Home() {
   const [showChipiSetup, setShowChipiSetup] = useState(false);
 
   const { createWalletAsync, isLoading: isCreatingWallet } = useCreateWallet();
+  const { user } = useUser();
+  const { getToken } = useAuth();
+
   const { data: walletData, refetch: refetchWallet } = useGetWallet({
-    externalUserId: userId || '',
-    bearerToken: bearerToken || '',
+    params: { externalUserId: userId || '' },
+    // provide function to lazily obtain bearer token
+    getBearerToken: async () => {
+      if (bearerToken) return bearerToken;
+      const token = await getToken();
+      setBearerToken(token || null);
+      return token || '';
+    },
   });
 
   useEffect(() => {
@@ -27,8 +36,18 @@ export default function Home() {
       setWalletDetected(true);
     }
     
-    // Check if user is already logged in to Supabase
-    checkSupabaseSession();
+    if (user) {
+      setUserId(user.id);
+    }
+    // obtain token when available
+    (async () => {
+      try {
+        const token = await getToken();
+        if (token) setBearerToken(token);
+      } catch (err) {
+        // ignore
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -37,15 +56,8 @@ export default function Home() {
     }
   }, [walletData]);
 
-  const checkSupabaseSession = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      setUserId(session.user.id);
-      setBearerToken(session.access_token);
-      // Automatically fetch wallet if session exists
-      refetchWallet();
-    }
-  };
+  // no-op: Using Clerk for authentication instead of Supabase
+  
 
   const formatAddress = (addr: string) => {
     if (!addr) return '';
@@ -367,6 +379,9 @@ declare global {
   interface Window {
     starknet_braavos?: {
       enable: () => Promise<string[]>;
+      account: {
+        execute: (calls: any[]) => Promise<any>;
+      };
     };
   }
 }

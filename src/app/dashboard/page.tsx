@@ -1,39 +1,48 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { Shield, Wallet, CreditCard, ArrowUpRight, ArrowDownLeft, RefreshCw, Copy, Check } from 'lucide-react';
-import { useGetWallet, useCreateWallet } from '@chipi-stack/nextjs';
-import { supabase } from '@/lib/supabase';
-import ChipiPayment from '@/components/ChipiPayment';
+import React, { useState, useEffect } from "react";
+import { Shield, Wallet, CreditCard, ArrowUpRight, ArrowDownLeft, RefreshCw, Copy, Check } from "lucide-react";
+import { useGetWallet, useCreateWallet } from "@chipi-stack/nextjs";
+import ChipiPayment from "@/components/ChipiPayment";
+import SecurityDashboard from '@/components/SecurityDashboard';
+import BraavosToChipiTransfer from '@/components/BraavosToChipiTransfer';
+import { useUser, useAuth } from "@clerk/nextjs";
 
 export default function WalletDashboard() {
   const [braavosConnected, setBraavosConnected] = useState(false);
   const [braavosAddress, setBraavosAddress] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [bearerToken, setBearerToken] = useState<string | null>(null);
+  const { user } = useUser();
+  const { getToken } = useAuth();
   const [encryptKey, setEncryptKey] = useState('');
   const [showCreateWallet, setShowCreateWallet] = useState(false);
   const [copied, setCopied] = useState<string>('');
 
   const { data: chipiWallet, isLoading: isLoadingWallet, refetch } = useGetWallet({
-    externalUserId: userId || '',
-    bearerToken: bearerToken || '',
+    params: { externalUserId: userId || '' },
+    getBearerToken: async () => {
+      if (bearerToken) return bearerToken;
+      const token = await getToken();
+      setBearerToken(token || null);
+      return token || '';
+    }
   });
 
   const { createWalletAsync, isLoading: isCreatingWallet } = useCreateWallet();
 
   useEffect(() => {
-    checkAuth();
+    if (user) setUserId(user.id);
     checkBraavosConnection();
-  }, []);
-
-  const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      setUserId(session.user.id);
-      setBearerToken(session.access_token);
-    }
-  };
+    (async () => {
+      try {
+        const token = await getToken();
+        if (token) setBearerToken(token);
+      } catch (err) {
+        // ignore
+      }
+    })();
+  }, [user]);
 
   const checkBraavosConnection = async () => {
     if (typeof window !== 'undefined' && window.starknet_braavos) {
@@ -189,6 +198,15 @@ export default function WalletDashboard() {
             )}
           </div>
 
+          {/* Braavos -> Chipi Transfer */}
+          <div className="md:col-span-2">
+            <BraavosToChipiTransfer
+              braavosAddress={braavosAddress}
+              chipiPublicKey={chipiWallet?.publicKey || ''}
+              onTransferComplete={() => refetch()}
+            />
+          </div>
+
           {/* Chipi Wallet Card */}
           <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/20 border border-purple-500/30 rounded-2xl p-6">
             <div className="flex items-center justify-between mb-4">
@@ -299,24 +317,12 @@ export default function WalletDashboard() {
           <div className="grid lg:grid-cols-2 gap-6">
             <ChipiPayment 
               userId={userId}
-              bearerToken={bearerToken}
+              bearerToken={bearerToken || ''}
               chipiWallet={chipiWallet}
             />
 
             {/* Transaction History Placeholder */}
-            <div className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <RefreshCw className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-xl font-bold">Recent Transactions</h3>
-              </div>
-              
-              <div className="space-y-3">
-                <div className="text-center py-8 text-gray-400">
-                  <p className="text-sm">No transactions yet</p>
-                  <p className="text-xs mt-1">Your transaction history will appear here</p>
-                </div>
-              </div>
-            </div>
+            <SecurityDashboard />
           </div>
         )}
 
@@ -362,6 +368,9 @@ declare global {
   interface Window {
     starknet_braavos?: {
       enable: () => Promise<string[]>;
+      account: {
+        execute: (calls: any[]) => Promise<any>;
+      };
     };
   }
 }

@@ -154,7 +154,7 @@ export default function Home() {
 
       {/* Background Image with Interactive Reveal */}
       <img
-        src="/background.png"
+        src="/background.webp"
         alt="Background"
         style={
           {
@@ -165,7 +165,7 @@ export default function Home() {
             top: 0,
             left: 0,
             zIndex: 1,
-            opacity: 0.3,
+            opacity: 0.09,
             pointerEvents: "none",
           } as React.CSSProperties
         }
@@ -224,18 +224,6 @@ export default function Home() {
               About Us
             </a>
           </nav>
-          <div className="flex items-center gap-4">
-            <Link href="/auth?mode=login">
-              <button className="text-sm text-gray-300 hover:text-emerald-400 transition-colors">
-                Login
-              </button>
-            </Link>
-            <Link href="/auth?mode=signup">
-              <button className="bg-emerald-400 text-gray-900 px-6 py-2 rounded-full text-sm font-semibold hover:bg-emerald-300 transition-colors">
-                Sign Up
-              </button>
-            </Link>
-          </div>
         </header>
 
         <main className="px-8 lg:px-16 py-12 lg:py-20">

@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@chipi-stack/nextjs": "^11.6.0",
-    "@clerk/nextjs": "^6.33.4",
+    "@clerk/nextjs": "^6.33.5",
     "@supabase/supabase-js": "^2.39.0",
     "autoprefixer": "^10.4.21",
     "geist": "^1.5.1",

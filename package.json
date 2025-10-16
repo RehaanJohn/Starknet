@@ -1,5 +1,5 @@
 {
-  "name": "fiflow-chipi-integration",
+  "name": "nimbus-starknet",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -19,7 +19,7 @@
     "next": "^15.5.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "starknet": "^6.11.0",
+    "starknet": "^8.5.5",
     "three": "^0.180.0"
   },
   "devDependencies": {

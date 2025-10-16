@@ -218,3 +218,291 @@ Your vault contract is now integrated with your Next.js app. You can now:
 - ✅ Read vault balances via API
 - ✅ Check vault status
 - ✅ Display contract info in your UI
+
+# Starknet Vault Contract Documentation
+
+## Contract Address
+
+**Deployed Address:** `0x06c2a8099d04b04c4fa26ab84cca176eb1182502b48d623dd31f9605500e3d07`
+
+---
+
+## 🏗️ Contract Structure
+
+### **Storage (The Database)**
+
+```cairo
+#[storage]
+struct Storage {
+    owner: ContractAddress,              // Who deployed the contract (YOU)
+    hot_wallet: ContractAddress,          // Authorized wallet for withdrawals (ChipiPay)
+    chipi_balance_low: LegacyMap<ContractAddress, u128>,   // User balances (lower 128 bits)
+    chipi_balance_high: LegacyMap<ContractAddress, u128>,  // User balances (upper 128 bits)
+    frozen: bool,                         // Emergency pause switch
+}
+```
+
+**Why split balances into low/high?**
+- Cairo uses u128 max, but we want to track larger numbers (u256)
+- So we split: `total_balance = (high << 128) + low`
+- Example: Balance of 1000 = `low: 1000, high: 0`
+
+---
+
+## 🔧 Functions Explained
+
+### **1. Constructor** (Runs once when deployed)
+
+```cairo
+fn constructor(ref self: ContractState, owner: ContractAddress) {
+    self.owner.write(owner);      // Set YOU as owner
+    self.frozen.write(false);     // Start unfrozen
+}
+```
+
+**What happened:** When you deployed, it saved your address as owner.
+
+---
+
+### **2. authorize_hot** (You authorize ChipiPay)
+
+```cairo
+fn authorize_hot(ref self: ContractState, hot: ContractAddress) {
+    let caller = get_caller_address();
+    let contract_owner = self.owner.read();
+    assert(caller == contract_owner, 'Only owner can authorize');  // Only YOU can call this
+    
+    self.hot_wallet.write(hot);                    // Save ChipiPay wallet address
+    self.emit(HotWalletAuthorized { hot_wallet: hot });  // Emit event
+}
+```
+
+**What it does:**
+- ✅ Checks: Are you the owner? If not, REJECT
+- ✅ Saves ChipiPay wallet as authorized
+- ✅ Emits event so you can track it
+
+**Use case:** You run this ONCE to give ChipiPay permission to withdraw
+
+---
+
+### **3. set_chipi_balance** (You credit user accounts)
+
+```cairo
+fn set_chipi_balance(
+    ref self: ContractState, 
+    user: ContractAddress, 
+    amount_low: u128, 
+    amount_high: u128
+) {
+    let caller = get_caller_address();
+    let contract_owner = self.owner.read();
+    assert(caller == contract_owner, 'Only owner can set balance');  // Only YOU
+    
+    self.chipi_balance_low.write(user, amount_low);    // Save balance
+    self.chipi_balance_high.write(user, amount_high);
+    self.emit(BalanceUpdated { ... });                 // Emit event
+}
+```
+
+**What it does:**
+- ✅ Only YOU (owner) can set balances
+- ✅ Updates the internal ledger for a user
+- ✅ Emits event
+
+**Real scenario:**
+```
+User deposits 500 STRK to your backend
+↓
+You verify deposit
+↓
+You call: set_chipi_balance(user_address, 500, 0)
+↓
+User now has "500" credits in vault
+```
+
+---
+
+### **4. withdraw_by_hot** (ChipiPay processes withdrawals)
+
+```cairo
+fn withdraw_by_hot(
+    ref self: ContractState, 
+    to: ContractAddress,      // Where to send
+    amount_low: u128,         // How much (low)
+    amount_high: u128         // How much (high)
+) {
+    let caller = get_caller_address();
+    let authorized_hot = self.hot_wallet.read();
+    
+    // CHECK 1: Is caller the authorized hot wallet?
+    assert(caller == authorized_hot, 'Only hot wallet can withdraw');
+
+    // CHECK 2: Is vault frozen?
+    let is_frozen = self.frozen.read();
+    assert(!is_frozen, 'Vault is frozen');
+
+    // CHECK 3: Does caller have enough balance?
+    let current_low = self.chipi_balance_low.read(caller);
+    let current_high = self.chipi_balance_high.read(caller);
+    assert(current_high >= amount_high, 'Insufficient balance (high)');
+    if current_high == amount_high {
+        assert(current_low >= amount_low, 'Insufficient balance (low)');
+    }
+
+    // SUBTRACT THE BALANCE (with borrow handling)
+    let (new_low, borrow) = if current_low >= amount_low {
+        (current_low - amount_low, 0_u128)
+    } else {
+        // Need to borrow from high part
+        (0x100000000000000000000000000000000_u128 + current_low - amount_low, 1_u128)
+    };
+    let new_high = current_high - amount_high - borrow;
+
+    // SAVE NEW BALANCE
+    self.chipi_balance_low.write(caller, new_low);
+    self.chipi_balance_high.write(caller, new_high);
+
+    // EMIT EVENT
+    self.emit(WithdrawalExecuted { from: caller, to: to, amount_low, amount_high });
+}
+```
+
+**What it does - Step by Step:**
+
+1. **Security Checks:**
+   - ✅ Is caller the authorized ChipiPay hot wallet? 
+   - ✅ Is vault NOT frozen?
+   - ✅ Does hot wallet have enough balance?
+
+2. **Math (Balance Subtraction):**
+   - If `current_low >= amount_low`: Simple subtraction
+   - If `current_low < amount_low`: Borrow from high part (like borrowing in subtraction)
+   
+3. **Update Balance:**
+   - Saves new balance to storage
+
+4. **Emit Event:**
+   - Your backend listens to this event
+   - Then sends actual STRK tokens to the user
+
+**Real scenario:**
+```
+User requests 100 STRK withdrawal
+↓
+ChipiPay hot wallet calls: withdraw_by_hot(user_address, 100, 0)
+↓
+Vault checks: Hot wallet authorized? ✓
+Vault checks: Balance >= 100? ✓
+Vault updates: balance -= 100
+↓
+Event emitted
+↓
+Your backend sees event → sends real STRK to user
+```
+
+---
+
+### **5. freeze / unfreeze** (Emergency Stop)
+
+```cairo
+fn freeze(ref self: ContractState) {
+    let caller = get_caller_address();
+    let contract_owner = self.owner.read();
+    assert(caller == contract_owner, 'Only owner can freeze');
+    
+    self.frozen.write(true);
+    self.emit(VaultFrozen { by: caller });
+}
+```
+
+**What it does:**
+- ✅ Only YOU can freeze
+- ✅ Sets `frozen = true`
+- ✅ ALL withdrawals stop working
+- ✅ Useful if you detect hack/exploit
+
+---
+
+### **6. revoke** (Remove hot wallet authorization)
+
+```cairo
+fn revoke(ref self: ContractState) {
+    let caller = get_caller_address();
+    let contract_owner = self.owner.read();
+    assert(caller == contract_owner, 'Only owner can revoke');
+    
+    let hot = self.hot_wallet.read();
+    self.hot_wallet.write(starknet::contract_address_const::<0>());  // Set to 0x0
+    self.emit(HotWalletRevoked { hot_wallet: hot });
+}
+```
+
+**What it does:**
+- ✅ Removes ChipiPay's authorization
+- ✅ Sets hot_wallet to 0x0 (null)
+- ✅ Hot wallet can NO LONGER withdraw
+
+---
+
+### **7. Read Functions** (Anyone can call)
+
+```cairo
+fn get_chipi_balance(self: @ContractState, user: ContractAddress) -> (u128, u128)
+fn get_owner(self: @ContractState) -> ContractAddress
+fn get_hot_wallet(self: @ContractState) -> ContractAddress
+fn is_frozen(self: @ContractState) -> bool
+```
+
+These just READ data, no modifications. Free to call!
+
+---
+
+## 🎯 Complete Flow Example
+
+### **Scenario: User Deposits & Withdraws**
+
+```
+1️⃣ USER DEPOSITS 1000 STRK
+   User → Sends 1000 STRK to your backend wallet
+   You  → Call set_chipi_balance(user, 1000, 0)
+   Vault → user.balance = 1000
+
+2️⃣ USER REQUESTS 300 STRK WITHDRAWAL
+   App  → User clicks "Withdraw 300 STRK"
+   Hot  → Calls withdraw_by_hot(user, 300, 0)
+   Vault → Checks authorization ✓
+   Vault → Checks balance (1000 >= 300) ✓
+   Vault → Updates balance: 1000 - 300 = 700
+   Vault → Emits WithdrawalExecuted event
+   You  → Listen to event → Send 300 real STRK to user
+
+3️⃣ USER BALANCE NOW
+   Vault ledger: 700
+   User received: 300 STRK (real tokens)
+```
+
+---
+
+## 🔒 Security Features
+
+| Feature | Purpose | Who Can Use |
+|---------|---------|-------------|
+| **Owner-only functions** | Prevent unauthorized control | Only YOU |
+| **Hot wallet check** | Only authorized wallet withdraws | Only ChipiPay |
+| **Balance checking** | Prevent overdrafts | Automatic |
+| **Freeze mechanism** | Emergency stop | Only YOU |
+| **Event emissions** | Audit trail | Everyone can see |
+
+---
+
+## 💡 Key Insight
+
+**This contract is NOT a wallet holding tokens!**
+
+It's a **permission system + ledger** that:
+- Tracks who has what balance
+- Controls who can modify balances  
+- Emits events your backend uses to trigger real token transfers
+
+Think of it like a **bank's internal database** - the database tracks your balance, but the actual money is elsewhere!

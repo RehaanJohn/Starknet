@@ -6,6 +6,9 @@ import { Shield, Users, Globe, Wallet, CreditCard } from "lucide-react";
 import { useCreateWallet, useGetWallet } from "@chipi-stack/nextjs";
 import { useUser, useAuth } from "@clerk/nextjs";
 import LaserFlow from "@/components/LaserFlow";
+import { useBraavosBalance } from "@/hooks/useBraavosBalance";
+import { useVaultBalance } from "@/hooks/useVaultBalance";
+import TransactionPanel from "@/components/TransactionPanel";
 
 export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
@@ -21,6 +24,10 @@ export default function Home() {
   const { createWalletAsync, isLoading: isCreatingWallet } = useCreateWallet();
   const { user } = useUser();
   const { getToken } = useAuth();
+  
+  // Fetch wallet balances
+  const { balanceHuman: braavosBalance, loading: braavosLoading } = useBraavosBalance();
+  const { balanceHuman: vaultBalance, loading: vaultLoading } = useVaultBalance({ address });
 
   const { data: walletData, refetch: refetchWallet } = useGetWallet({
     params: { externalUserId: userId || "" },
@@ -35,6 +42,38 @@ export default function Home() {
   useEffect(() => {
     if (typeof window !== "undefined" && window.starknet_braavos) {
       setWalletDetected(true);
+      
+      // Check if Braavos is already connected
+      const checkConnection = async () => {
+        try {
+          const braavos = (window as any).starknet_braavos;
+          // Try to get address without prompting
+          if (braavos.account?.address) {
+            setAddress(braavos.account.address);
+            setIsConnected(true);
+            console.log("✅ Braavos already connected:", braavos.account.address);
+          }
+        } catch (err) {
+          console.log("Braavos not connected yet");
+        }
+      };
+      checkConnection();
+      
+      // Poll for connection status every 2 seconds
+      const interval = setInterval(() => {
+        try {
+          const braavos = (window as any).starknet_braavos;
+          if (braavos?.account?.address && !isConnected) {
+            setAddress(braavos.account.address);
+            setIsConnected(true);
+            console.log("✅ Braavos connected:", braavos.account.address);
+          }
+        } catch (err) {
+          // ignore
+        }
+      }, 2000);
+      
+      return () => clearInterval(interval);
     }
 
     if (user) {
@@ -48,13 +87,24 @@ export default function Home() {
         // ignore
       }
     })();
-  }, []);
+  }, [user, getToken, isConnected]);
 
   useEffect(() => {
     if (walletData) {
       setChipiWallet(walletData);
     }
   }, [walletData]);
+
+  // Debug: Log when dashboard conditions change
+  useEffect(() => {
+    console.log("📊 Dashboard Status:", {
+      user: !!user,
+      userId: user?.id,
+      isConnected,
+      address,
+      showDashboard: !!(user && isConnected)
+    });
+  }, [user, isConnected, address]);
 
   const formatAddress = (addr: string) => {
     if (!addr) return "";
@@ -138,7 +188,6 @@ export default function Home() {
   };
 
   return (
-<<<<<<< HEAD
     <div
       className="min-h-screen relative overflow-hidden"
       onMouseMove={handleMouseMove}
@@ -152,24 +201,6 @@ export default function Home() {
           color="#10b981"
         />
       </div>
-=======
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-emerald-950 to-gray-900 text-white">
-      <header className="flex justify-between items-center px-8 lg:px-16 py-6">
-        <div className="flex items-center gap-2">
-          <Shield className="w-8 h-8 text-emerald-400" />
-          <span className="text-2xl font-bold">Fiflow</span>
-        </div>
-        <div>
-          <button
-            onClick={connectWallet}
-            className="bg-emerald-400 text-gray-900 px-8 py-3 rounded-full text-base font-semibold hover:bg-emerald-300 transition-all flex items-center gap-2"
-          >
-            <Wallet className="w-5 h-5" />
-            {walletDetected ? 'Connect Braavos' : 'Install Braavos Wallet'}
-          </button>
-        </div>
-      </header>
->>>>>>> 129849f (som)
 
       {/* Background Image with Interactive Reveal */}
       <img
@@ -212,39 +243,6 @@ export default function Home() {
 
       {/* Content Overlay */}
       <div className="relative z-10">
-        <header className="flex justify-between items-center px-8 lg:px-16 py-6">
-          <div className="flex items-center gap-2">
-            <Shield className="w-8 h-8 text-emerald-400" />
-            <span className="text-2xl font-bold text-white">Fiflow</span>
-          </div>
-          <nav className="hidden md:flex gap-8 text-sm">
-            <a
-              href="#"
-              className="text-emerald-400 underline underline-offset-4"
-            >
-              Home
-            </a>
-            <a
-              href="#"
-              className="text-gray-300 hover:text-emerald-400 transition-colors"
-            >
-              Features
-            </a>
-            <a
-              href="#"
-              className="text-gray-300 hover:text-emerald-400 transition-colors"
-            >
-              Company
-            </a>
-            <a
-              href="#"
-              className="text-gray-300 hover:text-emerald-400 transition-colors"
-            >
-              About Us
-            </a>
-          </nav>
-        </header>
-
         <main className="px-8 lg:px-16 py-12 lg:py-20">
           <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
@@ -259,16 +257,6 @@ export default function Home() {
               </p>
 
               <div className="flex items-center gap-6 flex-wrap">
-                <button
-                  onClick={connectWallet}
-                  className="bg-emerald-400 text-gray-900 px-8 py-3 rounded-full text-base font-semibold hover:bg-emerald-300 transition-all flex items-center gap-2"
-                >
-                  <Wallet className="w-5 h-5" />
-                  {walletDetected
-                    ? "Connect Braavos"
-                    : "Install Braavos Wallet"}
-                </button>
-
                 {isConnected && userId && (
                   <button
                     onClick={() => setShowChipiSetup(!showChipiSetup)}
@@ -340,6 +328,74 @@ export default function Home() {
                     </p>
                   </div>
                 </div>
+              )}
+
+              {/* Wallet Dashboard - Integrated */}
+              {user && isConnected ? (
+                <div className="mt-8 space-y-6">
+                  <h3 className="text-2xl font-bold text-white">Welcome, {user.firstName || 'User'}! Your Wallets</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Braavos Wallet Card */}
+                    <div className="bg-gradient-to-br from-blue-600/20 to-blue-800/20 border border-blue-500/30 rounded-xl p-5">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Wallet className="w-5 h-5 text-blue-400" />
+                        <h4 className="font-semibold text-blue-400">Braavos Wallet</h4>
+                      </div>
+                      <p className="text-2xl font-bold text-white mb-1">
+                        {braavosLoading ? (
+                          <span className="text-gray-400">Loading...</span>
+                        ) : braavosBalance !== null ? (
+                          `${braavosBalance.toFixed(4)} STRK`
+                        ) : (
+                          "0.0000 STRK"
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected"}
+                      </p>
+                    </div>
+
+                    {/* ChipiPay Vault Card */}
+                    <div className="bg-gradient-to-br from-purple-600/20 to-purple-800/20 border border-purple-500/30 rounded-xl p-5">
+                      <div className="flex items-center gap-2 mb-3">
+                        <CreditCard className="w-5 h-5 text-purple-400" />
+                        <h4 className="font-semibold text-purple-400">ChipiPay Vault</h4>
+                      </div>
+                      <p className="text-2xl font-bold text-white mb-1">
+                        {vaultLoading ? (
+                          <span className="text-gray-400">Loading...</span>
+                        ) : vaultBalance !== null ? (
+                          `${vaultBalance.toFixed(4)} STRK`
+                        ) : (
+                          "0.0000 STRK"
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        {address ? "On-chain balance" : "Connect wallet to view"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Transaction Panel */}
+                  <TransactionPanel 
+                    address={address} 
+                    vaultBalance={vaultBalance}
+                    onTransactionComplete={() => {
+                      // Refresh balances after transaction
+                      window.location.reload();
+                    }}
+                  />
+                </div>
+              ) : (
+                /* Show message when not connected */
+                user && !isConnected && (
+                  <div className="mt-8 p-6 bg-yellow-900/20 border border-yellow-500/30 rounded-xl">
+                    <p className="text-yellow-400">
+                      👆 Please connect your Braavos wallet to view your dashboard
+                    </p>
+                  </div>
+                )
               )}
 
               {/* Chipi Wallet Info */}

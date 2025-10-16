@@ -2,15 +2,9 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ChipiProvider, ChipiClientProvider } from "@chipi-stack/nextjs";
-import {
-  ClerkProvider,
-  SignInButton,
-  SignUpButton,
-  SignedIn,
-  SignedOut,
-  UserButton,
-} from '@clerk/nextjs';
+import { ClerkProvider } from '@clerk/nextjs';
 import SessionOverlay from '@/components/SessionOverlay';
+import Header from '@/components/Header';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Chipi + Clerk Integration",
-  description: "Gasless transactions with Chipi and Clerk authentication",
+  title: "Nimbus - Smart Financial Management",
+  description: "Manage your budget, savings, and investments easily, securely, and effectively with Braavos & Chipi Pay integration",
 };
 
 export default function RootLayout({
@@ -36,22 +30,10 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+          className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-900`}
         >
           <ChipiClientProvider apiPublicKey={process.env.NEXT_PUBLIC_CHIPI_API_KEY!} environment={(process.env.NEXT_PUBLIC_CHIPI_ENV as 'development' | 'production') || 'production'}>
-            <header className="flex justify-end items-center p-4 gap-4 h-16">
-              <SignedOut>
-                <SignInButton />
-                <SignUpButton>
-                  <button className="bg-[#6c47ff] text-white rounded-full font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 cursor-pointer">
-                    Sign Up
-                  </button>
-                </SignUpButton>
-              </SignedOut>
-              <SignedIn>
-                <UserButton />
-              </SignedIn>
-            </header>
+            <Header />
             {children}
             <SessionOverlay />
           </ChipiClientProvider>

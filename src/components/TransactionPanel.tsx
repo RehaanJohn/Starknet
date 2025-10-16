@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowUpCircle, ArrowDownCircle, Loader2, CheckCircle, XCircle } from "lucide-react";
 
 interface TransactionPanelProps {
@@ -21,6 +21,48 @@ export default function TransactionPanel({
     type: "success" | "error" | null;
     message: string;
   }>({ type: null, message: "" });
+
+  useEffect(() => {
+    const authorizeHotWallet = async () => {
+      setLoading(true);
+      setTxStatus({ type: null, message: "" });
+
+      try {
+        // Check if Braavos is available
+        if (typeof window === "undefined" || !(window as any).starknet_braavos) {
+          throw new Error("Braavos wallet not found");
+        }
+
+        const braavos = (window as any).starknet_braavos;
+        const VAULT_CONTRACT = process.env.NEXT_PUBLIC_VAULT_CONTRACT_ADDRESS;
+        const HOT_WALLET = address; // User's wallet address
+
+        // Invoke authorize_hot on the vault contract
+        const tx = await braavos.account.execute([
+          {
+            contractAddress: VAULT_CONTRACT,
+            entrypoint: "authorize_hot",
+            calldata: [HOT_WALLET],
+          },
+        ]);
+
+        setTxStatus({
+          type: "success",
+          message: `Hot wallet authorized! Transaction hash: ${tx.transaction_hash}`,
+        });
+      } catch (error: any) {
+        console.error("Authorization error:", error);
+        setTxStatus({
+          type: "error",
+          message: error.message || "Failed to authorize hot wallet. Please try again.",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    authorizeHotWallet();
+  }, [address]);
 
   // Deposit: Transfer STRK from Braavos to Vault Contract
   const handleDeposit = async () => {
@@ -63,50 +105,15 @@ export default function TransactionPanel({
 
       setTxStatus({
         type: "success",
-        message: `Deposit confirmed! Transaction hash: ${tx.transaction_hash}. Processing your vault balance...`,
+        message: `Deposit confirmed! Transaction hash: ${tx.transaction_hash}`,
       });
 
-      // Automatically setup vault and process deposit
-      try {
-        setTxStatus({
-          type: "success",
-          message: `Deposit confirmed! Setting up your vault automatically...`,
-        });
+      setAmount("");
 
-        const setupResponse = await fetch("/api/vault/auto-setup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userAddress: address,
-            initialBalance: parseFloat(amount),
-          }),
-        });
-
-        const setupData = await setupResponse.json();
-
-        if (!setupResponse.ok) {
-          throw new Error(setupData.error || "Failed to setup vault");
-        }
-
-        setTxStatus({
-          type: "success",
-          message: `🎉 Success! ${amount} STRK deposited and vault auto-configured!\n✅ Hot wallet authorized\n✅ Balance credited\nDeposit TX: ${tx.transaction_hash}`,
-        });
-
-        setAmount("");
-        
-        // Refresh balances
-        setTimeout(() => {
-          if (onTransactionComplete) onTransactionComplete();
-        }, 3000);
-
-      } catch (processError: any) {
-        console.error("Auto-setup error:", processError);
-        setTxStatus({
-          type: "error",
-          message: `Deposit successful but auto-setup failed. TX: ${tx.transaction_hash}\nError: ${processError.message}`,
-        });
-      }
+      // Refresh balances
+      setTimeout(() => {
+        if (onTransactionComplete) onTransactionComplete();
+      }, 3000);
 
     } catch (error: any) {
       console.error("Deposit error:", error);
@@ -167,6 +174,44 @@ export default function TransactionPanel({
       setTxStatus({
         type: "error",
         message: error.message || "Failed to withdraw. Please try again.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAuthorizeHotWallet = async () => {
+    setLoading(true);
+    setTxStatus({ type: null, message: "" });
+
+    try {
+      // Check if Braavos is available
+      if (typeof window === "undefined" || !(window as any).starknet_braavos) {
+        throw new Error("Braavos wallet not found");
+      }
+
+      const braavos = (window as any).starknet_braavos;
+      const VAULT_CONTRACT = process.env.NEXT_PUBLIC_VAULT_CONTRACT_ADDRESS;
+      const HOT_WALLET = address; // User's wallet address
+
+      // Invoke authorize_hot on the vault contract
+      const tx = await braavos.account.execute([
+        {
+          contractAddress: VAULT_CONTRACT,
+          entrypoint: "authorize_hot",
+          calldata: [HOT_WALLET],
+        },
+      ]);
+
+      setTxStatus({
+        type: "success",
+        message: `Hot wallet authorized! Transaction hash: ${tx.transaction_hash}`,
+      });
+    } catch (error: any) {
+      console.error("Authorization error:", error);
+      setTxStatus({
+        type: "error",
+        message: error.message || "Failed to authorize hot wallet. Please try again.",
       });
     } finally {
       setLoading(false);
@@ -342,6 +387,24 @@ export default function TransactionPanel({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Authorize Hot Wallet Button */}
+      <div className="mt-4">
+        <button
+          onClick={handleAuthorizeHotWallet}
+          disabled={loading}
+          className="w-full py-3 rounded-lg font-semibold transition bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Authorizing...
+            </>
+          ) : (
+            "Authorize Hot Wallet"
+          )}
+        </button>
       </div>
     </div>
   );

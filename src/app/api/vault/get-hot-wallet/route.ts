@@ -1,15 +1,8 @@
 import { NextResponse } from 'next/server';
 import { RpcProvider, Contract } from 'starknet';
+import vaultAbi from '@/abis/vault.json'; // Ensure the ABI is correct and matches the contract
 
-const VAULT_ABI = [
-  {
-    name: 'get_hot_wallet',
-    type: 'function',
-    inputs: [],
-    outputs: [{ type: 'core::starknet::contract_address::ContractAddress' }],
-    state_mutability: 'view',
-  },
-];
+const RPC_URL = 'https://starknet-sepolia.public.blastapi.io';
 
 /**
  * Get Hot Wallet API
@@ -17,26 +10,25 @@ const VAULT_ABI = [
  */
 export async function GET() {
   try {
-    const provider = new RpcProvider({
-      nodeUrl: process.env.NEXT_PUBLIC_RPC_URL || 'https://starknet-sepolia.public.blastapi.io',
+    const provider = new RpcProvider({ nodeUrl: RPC_URL });
+
+    // Initialize the contract with the provider by passing a single options object
+    const contract = new Contract({
+      abi: vaultAbi.abi, // Use the "abi" key from the imported JSON
+      address: process.env.NEXT_PUBLIC_VAULT_CONTRACT_ADDRESS as string,
+      provider,
     });
 
-    const contract = new Contract(
-      VAULT_ABI,
-      process.env.NEXT_PUBLIC_VAULT_CONTRACT_ADDRESS!,
-      provider
-    );
+    // Call the `get_hot_wallet` method
+    const hotWallet = await contract.call('get_hot_wallet');
 
-    const hotWallet = await contract.get_hot_wallet();
-    
     return NextResponse.json({
-      hot_wallet: hotWallet.toString(),
-      contract_address: process.env.NEXT_PUBLIC_VAULT_CONTRACT_ADDRESS,
+      hotWalletAddress: hotWallet[0],
     });
   } catch (error: any) {
-    console.error('❌ Error getting hot wallet:', error);
+    console.error('Error getting hot wallet:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to get hot wallet' },
+      { error: error.message || 'Internal Server Error' },
       { status: 500 }
     );
   }

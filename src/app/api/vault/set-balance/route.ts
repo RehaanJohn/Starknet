@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       nodeUrl: process.env.STARKNET_RPC_URL || 'https://cloud.argent-api.com/v1/starknet/sepolia/rpc/v0.9',
     });
 
+    // Use the owner account for setting balance
     const account = new Account(
       provider,
       process.env.STARKNET_ACCOUNT_ADDRESS!,

@@ -1,45 +1,111 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { RpcProvider } from 'starknet';
+import { NextResponse } from "next/server";
+import { exec } from "child_process";
+import { promisify } from "util";
 
-export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const userAddress = searchParams.get('address');
+const execAsync = promisify(exec);
 
-  if (!userAddress) {
-    return NextResponse.json({ error: 'Address required' }, { status: 400 });
-  }
+const STARKLI_COMMAND = "starkli call";
+const RPC_URL = "https://starknet-sepolia.public.blastapi.io";
+const TOKEN_CONTRACT_ADDRESS = "0x04718f5a0Fc34cC1AF16A1cdee98fFB20C31f5cD61D6Ab07201858f4287c938D";
 
+export async function GET(req: Request) {
   try {
-    // Use public RPC endpoint (remove /rpc/v0_7 suffix)
-    const provider = new RpcProvider({
-      nodeUrl: process.env.NEXT_PUBLIC_RPC_URL || 'https://starknet-sepolia.public.blastapi.io',
-    });
+    const { searchParams } = new URL(req.url);
+    const address = searchParams.get("address");
 
-    // Call contract directly using provider
-    const result = await provider.callContract({
-      contractAddress: process.env.NEXT_PUBLIC_VAULT_CONTRACT_ADDRESS!,
-      entrypoint: 'get_chipi_balance',
-      calldata: [userAddress],
-    });
-    
-    const balance_low = result[0] || '0';
-    const balance_high = result[1] || '0';
-    
+    if (!address) {
+      return NextResponse.json({ error: "Missing 'address' query parameter" }, { status: 400 });
+    }
+
+    // Construct the starkli command
+    const command = `${STARKLI_COMMAND} ${TOKEN_CONTRACT_ADDRESS} balanceOf ${address} --rpc ${RPC_URL}`;
+
+    // Execute the starkli command
+    const { stdout, stderr } = await execAsync(command);
+
+    if (stderr) {
+      console.error("starkli error:", stderr);
+      throw new Error(`starkli error: ${stderr}`);
+    }
+
+    // Parse the output (assuming it's a JSON array)
+    const resultArray = JSON.parse(stdout.trim());
+    if (!Array.isArray(resultArray) || resultArray.length < 2) {
+      throw new Error("Invalid response from starkli: expected an array with [low, high]");
+    }
+
+    const balance_low = resultArray[0];
+    const balance_high = resultArray[1];
+    const low = BigInt(balance_low);
+    const high = BigInt(balance_high);
+    const balance = (high << BigInt(128)) + low;
+
+    // Format the balance
+    const formattedBalance = balance.toString();
+
     return NextResponse.json({
-      address: userAddress,
       balance_low,
       balance_high,
-      balance_human: (Number(balance_low) / 1e18).toFixed(4) + ' STRK',
+      balanceRaw: balance.toString(),
+      balanceHuman: formattedBalance,
+      rawArray: resultArray.map((val) => val.toString()),
     });
   } catch (error: any) {
-    console.error('Error fetching balance:', error);
-    // Return zero balance on error instead of failing
-    return NextResponse.json({ 
-      address: userAddress,
-      balance_low: '0',
-      balance_high: '0',
-      balance_human: '0.0000 STRK',
-      error: error.message
-    }, { status: 200 });
+    console.error("Error in GET /api/vault/balance:", error);
+    return NextResponse.json(
+      { error: error.message || "Internal Server Error", details: error.toString() },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const address = body?.address;
+
+    if (!address) {
+      return NextResponse.json({ error: "Missing 'address' in request body" }, { status: 400 });
+    }
+
+    // Construct the starkli command
+    const command = `${STARKLI_COMMAND} ${TOKEN_CONTRACT_ADDRESS} balanceOf ${address} --rpc ${RPC_URL}`;
+
+    // Execute the starkli command
+    const { stdout, stderr } = await execAsync(command);
+
+    if (stderr) {
+      console.error("starkli error:", stderr);
+      throw new Error(`starkli error: ${stderr}`);
+    }
+
+    // Parse the output (assuming it's a JSON array)
+    const resultArray = JSON.parse(stdout.trim());
+    if (!Array.isArray(resultArray) || resultArray.length < 2) {
+      throw new Error("Invalid response from starkli: expected an array with [low, high]");
+    }
+
+    const balance_low = resultArray[0];
+    const balance_high = resultArray[1];
+    const low = BigInt(balance_low);
+    const high = BigInt(balance_high);
+    const balance = (high << BigInt(128)) + low;
+
+    // Format the balance
+    const formattedBalance = balance.toString(); // Adjust formatting as needed
+
+    return NextResponse.json({
+      balance_low,
+      balance_high,
+      balanceRaw: balance.toString(),
+      balanceHuman: formattedBalance,
+      rawArray: resultArray.map((val) => val.toString()),
+    });
+  } catch (error: any) {
+    console.error("Error in /api/vault/balance:", error);
+    return NextResponse.json(
+      { error: error.message || "Internal Server Error", details: error.toString() },
+      { status: 500 }
+    );
   }
 }

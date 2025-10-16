@@ -1,0 +1,147 @@
+{
+  "abi": [
+    {
+      "type": "function",
+      "name": "authorize_hot",
+      "inputs": [
+        {
+          "name": "hot",
+          "type": "core::starknet::contract_address::ContractAddress"
+        }
+      ],
+      "outputs": [],
+      "state_mutability": "external"
+    },
+    {
+      "type": "function",
+      "name": "withdraw_by_hot",
+      "inputs": [
+        {
+          "name": "to",
+          "type": "core::starknet::contract_address::ContractAddress"
+        },
+        {
+          "name": "amount_low",
+          "type": "core::integer::u128"
+        },
+        {
+          "name": "amount_high",
+          "type": "core::integer::u128"
+        }
+      ],
+      "outputs": [],
+      "state_mutability": "external"
+    },
+    {
+      "type": "function",
+      "name": "revoke",
+      "inputs": [],
+      "outputs": [],
+      "state_mutability": "external"
+    },
+    {
+      "type": "function",
+      "name": "freeze",
+      "inputs": [],
+      "outputs": [],
+      "state_mutability": "external"
+    },
+    {
+      "type": "function",
+      "name": "unfreeze",
+      "inputs": [],
+      "outputs": [],
+      "state_mutability": "external"
+    },
+    {
+      "type": "function",
+      "name": "get_chipi_balance",
+      "inputs": [
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "(core::integer::u128, core::integer::u128)"
+        }
+      ],
+      "state_mutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "set_chipi_balance",
+      "inputs": [
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress"
+        },
+        {
+          "name": "amount_low",
+          "type": "core::integer::u128"
+        },
+        {
+          "name": "amount_high",
+          "type": "core::integer::u128"
+        }
+      ],
+      "outputs": [],
+      "state_mutability": "external"
+    },
+    {
+      "type": "function",
+      "name": "get_owner",
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "core::starknet::contract_address::ContractAddress"
+        }
+      ],
+      "state_mutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "get_hot_wallet",
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "core::starknet::contract_address::ContractAddress"
+        }
+      ],
+      "state_mutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "is_frozen",
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "core::bool"
+        }
+      ],
+      "state_mutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "balanceOf",
+      "inputs": [
+        {
+          "name": "wallet",
+          "type": "core::starknet::contract_address::ContractAddress"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "low",
+          "type": "core::integer::u128"
+        },
+        {
+          "name": "high",
+          "type": "core::integer::u128"
+        }
+      ],
+      "state_mutability": "view"
+    }
+  ]
+}

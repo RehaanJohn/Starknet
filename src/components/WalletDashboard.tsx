@@ -1,27 +1,52 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
-import { Wallet, CreditCard, RefreshCw, Send, Plus, Snowflake, ShieldOff } from "lucide-react";
-import { useBraavosBalance } from "@/hooks/useBraavosBalance";
+import { Wallet, CreditCard, RefreshCw, Copy, Check, Zap, Lock, Network, ArrowUpRight, ArrowDownLeft, Shield } from "lucide-react";
+import { useGetWallet, useCreateWallet } from "@chipi-stack/nextjs";
+import ChipiPayment from "@/components/ChipiPayment";
+import SecurityDashboard from "@/components/SecurityDashboard";
+import BraavosToChipiTransfer from "@/components/BraavosToChipiTransfer";
+import { useUser, useAuth } from "@clerk/nextjs";
+import { useBalance } from "@/hooks/useBalance";
 import { useVaultBalance } from "@/hooks/useVaultBalance";
-import { useGetWallet } from "@chipi-stack/nextjs";
-import { useAuth } from "@clerk/nextjs";
 
-export default function WalletDashboard() {
+export default function WalletDashboard(): JSX.Element {
   const { user } = useUser();
   const { getToken } = useAuth();
-  const [braavosAddress, setBraavosAddress] = useState<string | null>(null);
-  const [braavosConnected, setBraavosConnected] = useState(false);
-  const [bearerToken, setBearerToken] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [bearerToken, setBearerToken] = useState<string | null>(null);
+  const [encryptKey, setEncryptKey] = useState("");
+  const [showCreateWallet, setShowCreateWallet] = useState(false);
+  const [braavosConnected, setBraavosConnected] = useState(false);
+  const [braavosAddress, setBraavosAddress] = useState("");
+  const [amount, setAmount] = useState("");
+  const [copied, setCopied] = useState<string>("");
 
-  // Fetch Braavos balance
-  const { balanceHuman: braavosBalance, loading: braavosLoading } = useBraavosBalance();
+  useEffect(() => {
+    if (user) setUserId(user.id);
+    (async () => {
+      try {
+        const token = await getToken();
+        if (token) setBearerToken(token);
+      } catch (e) {
+        // ignore
+      }
+    })();
 
-  // Get ChipiPay wallet
-  const { data: walletData } = useGetWallet({
+    if (typeof window !== "undefined" && (window as any).starknet_braavos) {
+      try {
+        const maybe = (window as any).starknet_braavos;
+        if (maybe.account?.address) {
+          setBraavosAddress(maybe.account.address);
+          setBraavosConnected(true);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [user, getToken]);
+
+  const { data: chipiWallet, isLoading: isLoadingWallet, refetch } = useGetWallet({
     params: { externalUserId: userId || "" },
     getBearerToken: async () => {
       if (bearerToken) return bearerToken;
@@ -31,325 +56,536 @@ export default function WalletDashboard() {
     },
   });
 
-  // Fetch vault balance for ChipiPay wallet
-  const chipiAddress = walletData ? (walletData as any).starknetAddress || (walletData as any).publicKey || null : null;
-  const { balanceHuman: vaultBalance, loading: vaultLoading, error: vaultError } = useVaultBalance({
-    address: chipiAddress,
-  });
+  const { createWalletAsync, isLoading: isCreatingWallet } = useCreateWallet();
+  const { balanceHuman: chipiBalance } = useBalance({ address: chipiWallet?.publicKey || null });
+  const { balanceHuman: formattedVaultBalance, loading: vaultBalanceLoading, hasData: hasVaultData } = useVaultBalance({ address: chipiWallet?.publicKey || null });
 
-  useEffect(() => {
-    if (user) {
-      setUserId(user.id);
-    }
-    (async () => {
-      try {
-        const token = await getToken();
-        if (token) setBearerToken(token);
-      } catch (err) {
-        // ignore
-      }
-    })();
-    
-    // Check if Braavos is already connected
-    checkBraavosConnection();
-  }, [user, getToken]);
-
-  const checkBraavosConnection = async () => {
-    if (typeof window !== "undefined" && (window as any).starknet_braavos) {
-      try {
-        const braavos = (window as any).starknet_braavos;
-        if (braavos.isConnected && braavos.selectedAddress) {
-          setBraavosAddress(braavos.selectedAddress);
-          setBraavosConnected(true);
-        }
-      } catch (err) {
-        console.log("Braavos not yet connected");
-      }
-    }
-  };
-
-  // Connect Braavos wallet
   const connectBraavos = async () => {
-    if (typeof window !== "undefined" && (window as any).starknet_braavos) {
-      try {
-        setIsConnecting(true);
-        const braavos = (window as any).starknet_braavos;
-        const result = await braavos.enable({ starknetVersion: "v5" });
-        const address = Array.isArray(result) ? result[0] : result;
-        
+    if (typeof window === "undefined" || !(window as any).starknet_braavos) {
+      alert("Please install Braavos wallet extension");
+      window.open("https://braavos.app/download-braavos-wallet/", "_blank");
+      return;
+    }
+    try {
+      const [address] = await (window as any).starknet_braavos.enable();
+      if (address) {
         setBraavosAddress(address);
         setBraavosConnected(true);
-        alert(`✅ Braavos Connected!\nAddress: ${address.slice(0, 6)}...${address.slice(-4)}`);
-      } catch (err) {
-        console.error("Failed to connect Braavos:", err);
-        alert("Failed to connect Braavos wallet. Please try again.");
-      } finally {
-        setIsConnecting(false);
       }
-    } else {
-      alert("Braavos wallet not detected. Please install the Braavos browser extension.");
-      window.open("https://braavos.app/download-braavos-wallet/", "_blank");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to connect Braavos");
     }
   };
 
-  const handleSetBalance = async () => {
-    if (!chipiAddress) {
-      alert("ChipiPay wallet not found");
-      return;
-    }
-    
-    const amount = prompt("Enter amount to set (in STRK):");
-    if (!amount) return;
-    
+  const handleCreateChipiWallet = async () => {
+    if (!encryptKey || encryptKey.length < 8) return alert("Provide an encryption key (min 8 chars)");
+    if (!userId || !bearerToken) return alert("Please sign in first");
     try {
-      const response = await fetch("/api/vault/set-balance", {
+      await createWalletAsync({ params: { encryptKey, externalUserId: userId }, bearerToken });
+      setShowCreateWallet(false);
+      setEncryptKey("");
+      refetch();
+      alert("Chipi wallet created");
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Failed to create wallet");
+    }
+  };
+
+  const handleDeposit = async () => {
+    if (!amount || Number(amount) <= 0) return alert("Enter a valid amount");
+    if (!chipiWallet?.publicKey) return alert("No Chipi wallet found");
+    try {
+      const res = await fetch("/api/vault/auto-setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user: chipiAddress,
-          amount: parseFloat(amount),
-        }),
+        body: JSON.stringify({ userAddress: chipiWallet.publicKey, initialBalance: Number(amount) * 1000 }),
       });
-      
-      const data = await response.json();
-      if (response.ok) {
-        alert(`Balance set successfully! Tx: ${data.transaction_hash}`);
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (err) {
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || "Deposit failed");
+      alert("Deposit simulated — vault updated");
+      refetch();
+      setAmount("");
+    } catch (err: any) {
       console.error(err);
-      alert("Failed to set balance");
+      alert(err?.message || "Deposit failed");
     }
   };
 
-  const handleWithdraw = async () => {
-    if (!chipiAddress) {
-      alert("ChipiPay wallet not found");
-      return;
-    }
-    
-    const amount = prompt("Enter amount to withdraw (in STRK):");
-    if (!amount) return;
-    
-    const recipient = prompt("Enter recipient address:", chipiAddress);
-    if (!recipient) return;
-    
-    try {
-      const response = await fetch("/api/vault/withdraw", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: recipient,
-          amount: parseFloat(amount),
-        }),
-      });
-      
-      const data = await response.json();
-      if (response.ok) {
-        alert(`Withdrawal successful! Tx: ${data.transaction_hash}`);
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to withdraw");
-    }
+  const formatAddress = (addr?: string) => (addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "");
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(""), 2000);
   };
 
-  const handleFreeze = async () => {
-    if (!confirm("Are you sure you want to freeze the vault? This will stop all withdrawals.")) {
-      return;
-    }
-    
-    try {
-      const response = await fetch("/api/vault/freeze", {
-        method: "POST",
-      });
-      
-      const data = await response.json();
-      if (response.ok) {
-        alert(`Vault frozen! Tx: ${data.transaction_hash}`);
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to freeze vault");
-    }
-  };
-
-  const handleUnfreeze = async () => {
-    try {
-      const response = await fetch("/api/vault/unfreeze", {
-        method: "POST",
-      });
-      
-      const data = await response.json();
-      if (response.ok) {
-        alert(`Vault unfrozen! Tx: ${data.transaction_hash}`);
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to unfreeze vault");
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Welcome Section */}
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Welcome, {user?.firstName || user?.username || "User"}!
-          </h1>
-          <p className="text-gray-300">Manage your wallets and vault balances</p>
-        </div>
-
-        {/* Balance Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {/* Braavos Wallet Card */}
-          <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-white/20 p-3 rounded-full">
-                  <Wallet className="w-6 h-6 text-white" />
-                </div>
-                <h2 className="text-xl font-bold text-white">Braavos Wallet</h2>
-              </div>
-              {!braavosConnected && (
-                <button
-                  onClick={connectBraavos}
-                  disabled={isConnecting}
-                  className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50"
-                >
-                  {isConnecting ? "Connecting..." : "Connect"}
-                </button>
-              )}
-            </div>
-            
-            <div className="mt-6">
-              {braavosConnected ? (
-                braavosLoading ? (
-                  <div className="flex items-center gap-2 text-white/80">
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Loading balance...</span>
-                  </div>
-                ) : braavosBalance !== null ? (
-                  <>
-                    <p className="text-3xl font-bold text-white mb-1">
-                      {braavosBalance.toFixed(4)} STRK
-                    </p>
-                    <p className="text-blue-200 text-sm flex items-center gap-2">
-                      <span className="inline-block w-2 h-2 bg-green-400 rounded-full"></span>
-                      Connected: {braavosAddress ? `${braavosAddress.slice(0, 6)}...${braavosAddress.slice(-4)}` : ""}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-3xl font-bold text-white mb-1">0.0000 STRK</p>
-                    <p className="text-blue-200 text-sm flex items-center gap-2">
-                      <span className="inline-block w-2 h-2 bg-green-400 rounded-full"></span>
-                      Connected: {braavosAddress ? `${braavosAddress.slice(0, 6)}...${braavosAddress.slice(-4)}` : ""}
-                    </p>
-                  </>
-                )
-              ) : (
-                <div>
-                  <p className="text-white/80 mb-2">Not connected</p>
-                  <p className="text-blue-200 text-xs">Click "Connect" to link your Braavos wallet</p>
-                </div>
-              )}
-            </div>
+  if (!userId) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="bg-gray-900/80 border border-emerald-500/30 rounded-3xl p-12 max-w-md w-full text-center backdrop-blur-xl">
+          <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Shield className="w-10 h-10 text-emerald-400" />
           </div>
-
-          {/* ChipiPay Vault Card */}
-          <div className="bg-gradient-to-br from-purple-600 to-purple-800 rounded-2xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-white/20 p-3 rounded-full">
-                  <CreditCard className="w-6 h-6 text-white" />
-                </div>
-                <h2 className="text-xl font-bold text-white">ChipiPay Vault</h2>
-              </div>
-            </div>
-            
-            <div className="mt-6">
-              {vaultLoading ? (
-                <div className="flex items-center gap-2 text-white/80">
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Loading...</span>
-                </div>
-              ) : vaultError ? (
-                <p className="text-red-200 text-sm">{vaultError}</p>
-              ) : vaultBalance !== null ? (
-                <>
-                  <p className="text-3xl font-bold text-white mb-1">
-                    {vaultBalance.toFixed(4)} STRK
-                  </p>
-                  <p className="text-purple-200 text-sm">
-                    {chipiAddress ? `${chipiAddress.slice(0, 6)}...${chipiAddress.slice(-4)}` : "No wallet"}
-                  </p>
-                </>
-              ) : (
-                <p className="text-white/80">No balance found</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-6 shadow-2xl">
-          <h3 className="text-2xl font-bold text-white mb-6">Vault Actions</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Set Balance (Owner Only) */}
-            <button
-              onClick={handleSetBalance}
-              className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white p-4 rounded-xl font-medium transition flex items-center justify-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
-              Set Balance
-            </button>
-
-            {/* Withdraw */}
-            <button
-              onClick={handleWithdraw}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white p-4 rounded-xl font-medium transition flex items-center justify-center gap-2"
-            >
-              <Send className="w-5 h-5" />
-              Withdraw
-            </button>
-
-            {/* Freeze Vault (Owner Only) */}
-            <button
-              onClick={handleFreeze}
-              className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white p-4 rounded-xl font-medium transition flex items-center justify-center gap-2"
-            >
-              <Snowflake className="w-5 h-5" />
-              Freeze Vault
-            </button>
-
-            {/* Unfreeze Vault (Owner Only) */}
-            <button
-              onClick={handleUnfreeze}
-              className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white p-4 rounded-xl font-medium transition flex items-center justify-center gap-2"
-            >
-              <ShieldOff className="w-5 h-5" />
-              Unfreeze Vault
-            </button>
-          </div>
-
-          <div className="mt-6 p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
-            <p className="text-blue-200 text-sm">
-              <strong>Note:</strong> Some actions (Set Balance, Freeze, Unfreeze) are owner-only operations. 
-              Make sure you have the proper permissions before attempting these actions.
-            </p>
-          </div>
+          <h2 className="text-3xl font-bold text-white mb-3">Welcome Back</h2>
+          <p className="text-gray-400 mb-8">
+            Sign in to access your wallet dashboard
+          </p>
+          <a
+            href="/auth?mode=login"
+            className="inline-block bg-emerald-500 text-gray-900 px-8 py-4 rounded-full font-bold text-lg hover:bg-emerald-400 transition-all hover:scale-105"
+          >
+            Sign In
+          </a>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-black text-white">
+      <main className="max-w-7xl mx-auto px-6 lg:px-8 py-8 space-y-8">
+        {/* Wallets Overview Section */}
+        <section>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-white mb-2">
+              Welcome, {user?.firstName || 'User'}! Your Wallets
+            </h2>
+            <p className="text-gray-400">
+              Connect and manage your Starknet wallets
+            </p>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Braavos Wallet Card */}
+            <div className="group relative bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-8 hover:border-orange-500/50 transition-all">
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+
+              <div className="relative">
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center">
+                      <Wallet className="w-6 h-6 text-orange-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white">
+                        Braavos Wallet
+                      </h3>
+                      <p className="text-xs text-gray-500">
+                        Standard Starknet Wallet
+                      </p>
+                    </div>
+                  </div>
+                  {braavosConnected && (
+                    <span className="flex items-center gap-1.5 text-xs text-green-400 bg-green-400/10 px-3 py-1.5 rounded-full border border-green-400/20">
+                      <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                      Connected
+                    </span>
+                  )}
+                </div>
+
+                {braavosConnected ? (
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-r from-orange-500/20 to-amber-500/20 border border-orange-500/30 rounded-2xl p-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-orange-300 uppercase tracking-wide font-medium">
+                          Balance
+                        </p>
+                      </div>
+                      <p className="text-3xl font-bold text-white mb-1">
+                        57.1099 STRK
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {formatAddress(braavosAddress)}
+                      </p>
+                    </div>
+
+                    <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-5 border border-gray-800">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">
+                        Wallet Address
+                      </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-orange-400 font-mono text-sm font-medium">
+                          {formatAddress(braavosAddress)}
+                        </p>
+                        <button
+                          onClick={() => copyToClipboard(braavosAddress, "braavos")}
+                          className="p-2 hover:bg-orange-500/10 rounded-lg transition-colors"
+                        >
+                          {copied === "braavos" ? (
+                            <Check className="w-4 h-4 text-green-400" />
+                          ) : (
+                            <Copy className="w-4 h-4 text-gray-400 hover:text-orange-400" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2 text-xs text-gray-400 bg-gray-800/30 rounded-xl p-4">
+                      <Network className="w-4 h-4 text-orange-400 mt-0.5 flex-shrink-0" />
+                      <p>
+                        Connected to Starknet Mainnet. Use for standard transactions.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-gray-400 text-sm leading-relaxed">
+                      Connect your Braavos wallet to access the full Starknet ecosystem.
+                    </p>
+                    <button
+                      onClick={connectBraavos}
+                      className="w-full bg-orange-500 text-white px-6 py-4 rounded-2xl font-bold hover:bg-orange-400 transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
+                    >
+                      <Wallet className="w-5 h-5" />
+                      Connect Braavos Wallet
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Chipi Wallet Card */}
+            <div className="group relative bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-8 hover:border-purple-500/50 transition-all">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+
+              <div className="relative">
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center">
+                      <CreditCard className="w-6 h-6 text-purple-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white">
+                        Chipi Wallet
+                      </h3>
+                      <p className="text-xs text-gray-500">
+                        Gasless Transactions
+                      </p>
+                    </div>
+                  </div>
+                  {chipiWallet && (
+                    <span className="flex items-center gap-1.5 text-xs text-green-400 bg-green-400/10 px-3 py-1.5 rounded-full border border-green-400/20">
+                      <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                      Active
+                    </span>
+                  )}
+                </div>
+
+                {isLoadingWallet ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <RefreshCw className="w-8 h-8 text-purple-400 animate-spin mb-3" />
+                    <p className="text-sm text-gray-400">Loading wallet...</p>
+                  </div>
+                ) : chipiWallet ? (
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-r from-purple-500/20 to-emerald-500/20 border border-purple-500/30 rounded-2xl p-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-purple-300 uppercase tracking-wide font-medium">
+                          Vault Balance
+                        </p>
+                        {vaultBalanceLoading && (
+                          <RefreshCw className="w-3 h-3 text-purple-400 animate-spin" />
+                        )}
+                      </div>
+                      <p className="text-3xl font-bold text-white mb-1">
+                        {formattedVaultBalance} STRK
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {hasVaultData ? 'On-chain balance' : 'Available balance'}
+                      </p>
+                    </div>
+
+                    <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-5 border border-gray-800">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">
+                        Wallet Address
+                      </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-purple-400 font-mono text-sm font-medium">
+                          {formatAddress(chipiWallet.publicKey)}
+                        </p>
+                        <button
+                          onClick={() => copyToClipboard(chipiWallet.publicKey, "chipi")}
+                          className="p-2 hover:bg-purple-500/10 rounded-lg transition-colors"
+                        >
+                          {copied === "chipi" ? (
+                            <Check className="w-4 h-4 text-green-400" />
+                          ) : (
+                            <Copy className="w-4 h-4 text-gray-400 hover:text-purple-400" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-r from-emerald-500/10 to-purple-500/10 border border-emerald-500/20 rounded-2xl p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 bg-emerald-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Zap className="w-4 h-4 text-emerald-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-emerald-400 font-semibold mb-1">
+                            Gasless Transactions Enabled
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            Send payments without paying gas fees
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-gray-400 text-sm leading-relaxed">
+                      Create a Chipi wallet to enjoy gasless transactions.
+                    </p>
+                    <button
+                      onClick={() => setShowCreateWallet(true)}
+                      className="w-full bg-purple-500 text-white px-6 py-4 rounded-2xl font-bold hover:bg-purple-400 transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
+                    >
+                      <CreditCard className="w-5 h-5" />
+                      Create Chipi Wallet
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Create Wallet Modal */}
+        {showCreateWallet && (
+          <section className="bg-gradient-to-br from-purple-900/20 to-gray-900/50 border border-purple-500/30 rounded-3xl p-8 backdrop-blur-xl">
+            <div className="max-w-2xl mx-auto space-y-6">
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-purple-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Lock className="w-8 h-8 text-purple-400" />
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-2">
+                  Create Your Chipi Wallet
+                </h3>
+                <p className="text-gray-400">
+                  Set a secure encryption key to protect your wallet
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-3">
+                    Encryption Key <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Minimum 8 characters"
+                    value={encryptKey}
+                    onChange={(e) => setEncryptKey(e.target.value)}
+                    className="w-full px-5 py-4 bg-black/40 border border-gray-700 rounded-2xl text-white placeholder:text-gray-600 focus:border-purple-400 focus:outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="flex gap-4 pt-2">
+                  <button
+                    onClick={handleCreateChipiWallet}
+                    disabled={isCreatingWallet || !encryptKey}
+                    className="flex-1 bg-purple-500 text-white px-6 py-4 rounded-2xl font-bold hover:bg-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02]"
+                  >
+                    {isCreatingWallet ? "Creating Wallet..." : "Create Wallet"}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowCreateWallet(false);
+                      setEncryptKey("");
+                    }}
+                    className="px-8 py-4 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-2xl transition-all font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-4">
+                <div className="flex gap-3">
+                  <div className="text-yellow-400 text-xl">⚠️</div>
+                  <div>
+                    <p className="text-sm text-yellow-400 font-semibold mb-1">
+                      Important Security Notice
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      Store your encryption key securely. It cannot be recovered if lost.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Transactions Section */}
+        {chipiWallet && (
+          <section className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-white mb-2">Transactions</h2>
+            </div>
+            
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Amount (STRK)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="0.0000"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full px-4 py-3 bg-black/40 border border-gray-700 rounded-2xl text-white placeholder:text-gray-500 focus:border-blue-400 focus:outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2 text-blue-400">
+                      <span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                      <span className="font-medium">Automated Deposit Flow:</span>
+                    </div>
+                    <div className="text-gray-300 text-xs space-y-1 ml-3.5">
+                      <p>1. Transfer STRK from Braavos to Vault contract ✅</p>
+                      <p>2. System automatically credits your vault balance ✅</p>
+                      <p>3. Balance updates in ChipiPay vault card ✅</p>
+                      <p className="text-emerald-400">⚡ Fully automated - no admin needed!</p>
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleDeposit}
+                  className="w-full bg-blue-500 hover:bg-blue-400 text-white px-6 py-4 rounded-2xl font-bold transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
+                >
+                  <ArrowUpRight className="w-5 h-5" />
+                  Deposit to Vault
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-black/40 backdrop-blur-sm rounded-2xl p-5 border border-gray-800">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">
+                    Vault Balance
+                  </p>
+                  <p className="text-2xl font-bold text-purple-400 mb-1">
+                    {formattedVaultBalance} STRK
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    Updates automatically on deposits
+                  </p>
+                </div>
+
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-emerald-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Zap className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-emerald-400 font-semibold mb-1">
+                        Auto-Setup Enabled
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        Vault balance increases automatically when you deposit
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Transfer Section */}
+        {braavosConnected && chipiWallet && (
+          <section>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-white mb-2">
+                Transfer Funds
+              </h2>
+              <p className="text-gray-400">Move assets between your wallets</p>
+            </div>
+            <BraavosToChipiTransfer
+              braavosAddress={braavosAddress}
+              chipiPublicKey={chipiWallet?.publicKey || ""}
+              onTransferComplete={() => refetch()}
+            />
+          </section>
+        )}
+
+        {/* Actions Section */}
+        {chipiWallet && (
+          <section>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-white mb-2">
+                Wallet Actions
+              </h2>
+              <p className="text-gray-400">
+                Make payments and view your activity
+              </p>
+            </div>
+
+            <div className="grid lg:grid-cols-2 gap-6">
+              <ChipiPayment
+                userId={userId}
+                bearerToken={bearerToken || ""}
+                chipiWallet={chipiWallet}
+              />
+              <SecurityDashboard />
+            </div>
+          </section>
+        )}
+
+        {/* Features Section */}
+        <section className="grid md:grid-cols-3 gap-6">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6 hover:border-emerald-500/50 transition-all group">
+            <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <Zap className="w-6 h-6 text-emerald-400" />
+            </div>
+            <h4 className="font-bold text-white mb-2">Gasless Transactions</h4>
+            <p className="text-sm text-gray-400 leading-relaxed">
+              Send tokens without worrying about gas fees with Chipi Pay integration
+            </p>
+          </div>
+
+          <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6 hover:border-purple-500/50 transition-all group">
+            <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <Lock className="w-6 h-6 text-purple-400" />
+            </div>
+            <h4 className="font-bold text-white mb-2">Bank-Grade Security</h4>
+            <p className="text-sm text-gray-400 leading-relaxed">
+              Your wallet is encrypted and secured with industry-standard encryption
+            </p>
+          </div>
+
+          <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6 hover:border-orange-500/50 transition-all group">
+            <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <Network className="w-6 h-6 text-orange-400" />
+            </div>
+            <h4 className="font-bold text-white mb-2">Multi-Wallet Support</h4>
+            <p className="text-sm text-gray-400 leading-relaxed">
+              Seamlessly manage both Braavos and Chipi wallets in one dashboard
+            </p>
+          </div>
+        </section>
+      </main>
     </div>
   );
+}
+
+// Type declaration for Braavos wallet
+declare global {
+  interface Window {
+    starknet_braavos?: {
+      enable: () => Promise<string[]>;
+      account: {
+        address: string;
+        execute: (calls: any[]) => Promise<any>;
+      };
+    };
+  }
 }

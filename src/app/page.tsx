@@ -9,6 +9,7 @@ import LaserFlow from "@/components/LaserFlow";
 import { useBraavosBalance } from "@/hooks/useBraavosBalance";
 import { useVaultBalance } from "@/hooks/useVaultBalance";
 import TransactionPanel from "@/components/TransactionPanel";
+import WalletDashboard from "@/components/WalletDashboard";
 
 export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
@@ -19,7 +20,7 @@ export default function Home() {
   const [chipiWallet, setChipiWallet] = useState<any>(null);
   const [encryptKey, setEncryptKey] = useState("");
   const [showChipiSetup, setShowChipiSetup] = useState(false);
-  const revealImgRef = useRef(null);
+  const revealImgRef = useRef<HTMLDivElement>(null);
 
   const { createWalletAsync, isLoading: isCreatingWallet } = useCreateWallet();
   const { user } = useUser();
@@ -165,6 +166,36 @@ export default function Home() {
     } catch (error: any) {
       console.error("Error creating Chipi wallet:", error);
       alert(error.message || "Failed to create Chipi wallet");
+    }
+  };
+
+  const depositToVault = async () => {
+    try {
+      if (!window.starknet_braavos || !isConnected || !address) {
+        alert("Please connect your Braavos wallet first.");
+        return;
+      }
+
+      const braavos = window.starknet_braavos;
+      const vaultContractAddress = process.env.NEXT_PUBLIC_VAULT_CONTRACT_ADDRESS;
+
+      if (!vaultContractAddress) {
+        alert("Vault contract address is not configured.");
+        return;
+      }
+
+      // Example transaction call to the vault contract
+      const transaction = {
+        contractAddress: vaultContractAddress,
+        entrypoint: "deposit",
+        calldata: [], // Add calldata if required by the contract
+      };
+
+      await braavos.account.execute([transaction]);
+      alert("Transaction sent to the vault successfully!");
+    } catch (error) {
+      console.error("Failed to send transaction:", error);
+      alert("Failed to send transaction. Please try again.");
     }
   };
 
@@ -330,65 +361,10 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Wallet Dashboard - Integrated */}
+              {/* Wallet Dashboard - show inline on homepage */}
               {user && isConnected ? (
-                <div className="mt-8 space-y-6">
-                  <h3 className="text-2xl font-bold text-white">Welcome, {user.firstName || 'User'}! Your Wallets</h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Braavos Wallet Card */}
-                    <div className="bg-gradient-to-br from-blue-600/20 to-blue-800/20 border border-blue-500/30 rounded-xl p-5">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Wallet className="w-5 h-5 text-blue-400" />
-                        <h4 className="font-semibold text-blue-400">Braavos Wallet</h4>
-                      </div>
-                      <p className="text-2xl font-bold text-white mb-1">
-                        {braavosLoading ? (
-                          <span className="text-gray-400">Loading...</span>
-                        ) : braavosBalance !== null ? (
-                          `${braavosBalance.toFixed(4)} STRK`
-                        ) : (
-                          "0.0000 STRK"
-                        )}
-                      </p>
-                      <p className="text-sm text-gray-400">
-                        {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected"}
-                      </p>
-                    </div>
-
-                    {/* ChipiPay Vault Card */}
-                    <div className="bg-gradient-to-br from-purple-600/20 to-purple-800/20 border border-purple-500/30 rounded-xl p-5">
-                      <div className="flex items-center gap-2 mb-3">
-                        <CreditCard className="w-5 h-5 text-purple-400" />
-                        <h4 className="font-semibold text-purple-400">ChipiPay Vault</h4>
-                      </div>
-                      <p className="text-2xl font-bold text-white mb-1">
-                        {vaultLoading ? (
-                          <span className="text-gray-400">Loading...</span>
-                        ) : vaultBalance !== null ? (
-                          `${vaultBalance.toFixed(4)} STRK`
-                        ) : (
-                          "0.0000 STRK"
-                        )}
-                      </p>
-                      <p className="text-sm text-gray-400">
-                        {address ? "On-chain balance" : "Connect wallet to view"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Transaction Panel */}
-                  <TransactionPanel 
-                    address={address} 
-                    vaultBalance={vaultBalance}
-                    onTransactionComplete={() => {
-                      // Refresh balances after transaction
-                      window.location.reload();
-                    }}
-                  />
-                </div>
+                <WalletDashboard />
               ) : (
-                /* Show message when not connected */
                 user && !isConnected && (
                   <div className="mt-8 p-6 bg-yellow-900/20 border border-yellow-500/30 rounded-xl">
                     <p className="text-yellow-400">

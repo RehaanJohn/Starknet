@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { SignInButton, SignUpButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { Wallet, CheckCircle, Shield } from "lucide-react";
 
@@ -60,11 +61,25 @@ export default function Header() {
       {/* Left: App Name */}
       <div className="flex items-center gap-2">
         <Shield className="w-8 h-8 text-emerald-400" />
-        <span className="text-2xl font-bold text-white">Nimbus</span>
+        <a href="/" className="text-2xl font-bold text-white hover:opacity-90">Nimbus</a>
+        {/* Dashboard Link - visible to all users */}
+        <a
+          href="/dashboard"
+          className="ml-4 text-sm font-medium text-gray-300 hover:text-emerald-400 transition"
+        >
+          Dashboard
+        </a>
       </div>
       
-      {/* Right: Braavos Connect + Auth Buttons */}
+      {/* Right: Dashboard link, Braavos Connect + Auth Buttons */}
       <div className="flex items-center gap-4">
+        {/* Prominent Dashboard link for quick access */}
+        <Link
+          href="/dashboard"
+          className="hidden sm:inline-block bg-emerald-500 text-gray-900 px-4 py-2 rounded-full font-medium text-sm hover:bg-emerald-400 transition"
+        >
+          Dashboard
+        </Link>
         {/* Braavos Connect Status */}
         {braavosConnected ? (
           <div className="flex items-center gap-2 bg-green-600/20 border border-green-500/30 rounded-full px-4 py-2">

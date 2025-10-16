@@ -1,42 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Account, RpcProvider, Contract } from 'starknet';
-
-const VAULT_ABI = [
-  {
-    name: 'get_chipi_balance',
-    type: 'function',
-    inputs: [{ name: 'user', type: 'core::starknet::contract_address::ContractAddress' }],
-    outputs: [{ type: '(core::integer::u128, core::integer::u128)' }],
-    state_mutability: 'view',
-  },
-  {
-    name: 'set_chipi_balance',
-    type: 'function',
-    inputs: [
-      { name: 'user', type: 'core::starknet::contract_address::ContractAddress' },
-      { name: 'amount_low', type: 'core::integer::u128' },
-      { name: 'amount_high', type: 'core::integer::u128' }
-    ],
-    outputs: [],
-    state_mutability: 'external',
-  },
-  {
-    name: 'authorize_hot',
-    type: 'function',
-    inputs: [
-      { name: 'hot', type: 'core::starknet::contract_address::ContractAddress' }
-    ],
-    outputs: [],
-    state_mutability: 'external',
-  },
-  {
-    name: 'get_hot_wallet',
-    type: 'function',
-    inputs: [],
-    outputs: [{ type: 'core::starknet::contract_address::ContractAddress' }],
-    state_mutability: 'view',
-  },
-];
 
 const CHIPI_HOT_WALLET = "0x4afacd80277c63dc957f2286b417dad74526a5034dbf7354729585da7282926";
 
@@ -62,17 +24,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`🚀 Auto-setting up vault for user: ${userAddress}`);
 
-    // Initialize provider and owner account
-    const provider = new RpcProvider({
-      nodeUrl: process.env.NEXT_PUBLIC_RPC_URL || 'https://starknet-sepolia.public.blastapi.io',
-    });
-
-    const ownerAddress = process.env.STARKNET_ACCOUNT_ADDRESS;
-    const ownerPrivateKey = process.env.STARKNET_PRIVATE_KEY;
-
-    if (!ownerAddress || !ownerPrivateKey) {
-      return NextResponse.json({ error: 'Owner credentials not configured' }, { status: 500 });
-    }
+    // Using internal API calls instead of direct blockchain connection
 
     // Use direct API calls to other working endpoints instead of Contract constructor
     const results = [];

@@ -1,0 +1,293 @@
+[
+  {
+    "type": "impl",
+    "name": "VaultImpl",
+    "interface_name": "vault::vault::IVault"
+  },
+  {
+    "type": "enum",
+    "name": "core::bool",
+    "variants": [
+      {
+        "name": "False",
+        "type": "()"
+      },
+      {
+        "name": "True",
+        "type": "()"
+      }
+    ]
+  },
+  {
+    "type": "interface",
+    "name": "vault::vault::IVault",
+    "items": [
+      {
+        "type": "function",
+        "name": "authorize_hot",
+        "inputs": [
+          {
+            "name": "hot",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "withdraw_by_hot",
+        "inputs": [
+          {
+            "name": "to",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "amount_low",
+            "type": "core::integer::u128"
+          },
+          {
+            "name": "amount_high",
+            "type": "core::integer::u128"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "revoke",
+        "inputs": [],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "freeze",
+        "inputs": [],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "unfreeze",
+        "inputs": [],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_chipi_balance",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "(core::integer::u128, core::integer::u128)"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "set_chipi_balance",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "amount_low",
+            "type": "core::integer::u128"
+          },
+          {
+            "name": "amount_high",
+            "type": "core::integer::u128"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_owner",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_hot_wallet",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "is_frozen",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      }
+    ]
+  },
+  {
+    "type": "constructor",
+    "name": "constructor",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "core::starknet::contract_address::ContractAddress"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vault::vault::Vault::HotWalletAuthorized",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "hot_wallet",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vault::vault::Vault::HotWalletRevoked",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "hot_wallet",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vault::vault::Vault::WithdrawalExecuted",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "from",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      },
+      {
+        "name": "to",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      },
+      {
+        "name": "amount_low",
+        "type": "core::integer::u128",
+        "kind": "data"
+      },
+      {
+        "name": "amount_high",
+        "type": "core::integer::u128",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vault::vault::Vault::VaultFrozen",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "by",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vault::vault::Vault::VaultUnfrozen",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "by",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vault::vault::Vault::BalanceUpdated",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "user",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      },
+      {
+        "name": "amount_low",
+        "type": "core::integer::u128",
+        "kind": "data"
+      },
+      {
+        "name": "amount_high",
+        "type": "core::integer::u128",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vault::vault::Vault::Event",
+    "kind": "enum",
+    "variants": [
+      {
+        "name": "HotWalletAuthorized",
+        "type": "vault::vault::Vault::HotWalletAuthorized",
+        "kind": "nested"
+      },
+      {
+        "name": "HotWalletRevoked",
+        "type": "vault::vault::Vault::HotWalletRevoked",
+        "kind": "nested"
+      },
+      {
+        "name": "WithdrawalExecuted",
+        "type": "vault::vault::Vault::WithdrawalExecuted",
+        "kind": "nested"
+      },
+      {
+        "name": "VaultFrozen",
+        "type": "vault::vault::Vault::VaultFrozen",
+        "kind": "nested"
+      },
+      {
+        "name": "VaultUnfrozen",
+        "type": "vault::vault::Vault::VaultUnfrozen",
+        "kind": "nested"
+      },
+      {
+        "name": "BalanceUpdated",
+        "type": "vault::vault::Vault::BalanceUpdated",
+        "kind": "nested"
+      }
+    ]
+  }
+]

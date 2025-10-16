@@ -63,34 +63,53 @@ export default function TransactionPanel({
 
       setTxStatus({
         type: "success",
-        message: `Deposit confirmed! Transaction hash: ${tx.transaction_hash}. Processing your vault balance...`,
+        message: `Deposit transaction sent! Hash: ${tx.transaction_hash}. Waiting for confirmation...`,
       });
 
-      // Automatically setup vault and process deposit
+      // Wait for transaction confirmation
       try {
+        // Wait for transaction to be accepted on L2
         setTxStatus({
           type: "success",
-          message: `Deposit confirmed! Setting up your vault automatically...`,
+          message: `Waiting for transaction confirmation... This may take a few moments.`,
         });
 
-        const setupResponse = await fetch("/api/vault/auto-setup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userAddress: address,
-            initialBalance: parseFloat(amount),
-          }),
-        });
-
-        const setupData = await setupResponse.json();
-
-        if (!setupResponse.ok) {
-          throw new Error(setupData.error || "Failed to setup vault");
+        // Poll for transaction status
+        if (braavos.provider?.waitForTransaction) {
+          await braavos.provider.waitForTransaction(tx.transaction_hash, {
+            retryInterval: 5000,
+          });
+        } else {
+          // Fallback: wait a fixed time if waitForTransaction is not available
+          console.warn("waitForTransaction not available, using fixed delay");
+          await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
         }
 
         setTxStatus({
           type: "success",
-          message: `🎉 Success! ${amount} STRK deposited and vault auto-configured!\n✅ Hot wallet authorized\n✅ Balance credited\nDeposit TX: ${tx.transaction_hash}`,
+          message: `Transaction confirmed! Processing deposit...`,
+        });
+
+        // Process the deposit - verify and credit vault balance
+        const processResponse = await fetch("/api/vault/process-deposit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userAddress: address,
+            amount: parseFloat(amount),
+            transactionHash: tx.transaction_hash,
+          }),
+        });
+
+        const processData = await processResponse.json();
+
+        if (!processResponse.ok) {
+          throw new Error(processData.error || "Failed to process deposit");
+        }
+
+        setTxStatus({
+          type: "success",
+          message: `🎉 Success! ${amount} STRK deposited to vault!\n✅ Transaction confirmed on-chain\n✅ Vault balance updated\nDeposit TX: ${tx.transaction_hash}\nUpdate TX: ${processData.transaction_hash}`,
         });
 
         setAmount("");
@@ -101,10 +120,10 @@ export default function TransactionPanel({
         }, 3000);
 
       } catch (processError: any) {
-        console.error("Auto-setup error:", processError);
+        console.error("Deposit processing error:", processError);
         setTxStatus({
           type: "error",
-          message: `Deposit successful but auto-setup failed. TX: ${tx.transaction_hash}\nError: ${processError.message}`,
+          message: `Deposit transaction sent but processing failed. TX: ${tx.transaction_hash}\nError: ${processError.message}\n\nYour tokens are safe in the vault contract. Contact support.`,
         });
       }
 
@@ -246,15 +265,15 @@ export default function TransactionPanel({
         {activeTab === "deposit" && (
           <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
             <p className="text-xs text-blue-400">
-              ℹ️ <strong>Automated Deposit Flow:</strong>
+              ℹ️ <strong>Secure Deposit Flow:</strong>
               <br />
-              1. Transfer STRK from Braavos to Vault contract ✅
+              1. Transfer STRK from Braavos to Vault contract 🔒
               <br />
-              2. System automatically credits your vault balance ✅
+              2. Wait for on-chain transaction confirmation ⏳
               <br />
-              3. Balance updates in ChipiPay Vault card ✅
+              3. System verifies and credits your vault balance ✅
               <br />
-              <strong className="text-emerald-400">⚡ Fully automated - no admin needed!</strong>
+              <strong className="text-emerald-400">⚡ Secure & verified - real on-chain deposits!</strong>
             </p>
           </div>
         )}

@@ -75,9 +75,15 @@ export default function TransactionPanel({
         });
 
         // Poll for transaction status
-        await braavos.provider.waitForTransaction(tx.transaction_hash, {
-          retryInterval: 5000,
-        });
+        if (braavos.provider?.waitForTransaction) {
+          await braavos.provider.waitForTransaction(tx.transaction_hash, {
+            retryInterval: 5000,
+          });
+        } else {
+          // Fallback: wait a fixed time if waitForTransaction is not available
+          console.warn("waitForTransaction not available, using fixed delay");
+          await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
+        }
 
         setTxStatus({
           type: "success",

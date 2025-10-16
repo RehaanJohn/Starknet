@@ -138,6 +138,7 @@ export default function Home() {
   };
 
   return (
+<<<<<<< HEAD
     <div
       className="min-h-screen relative overflow-hidden"
       onMouseMove={handleMouseMove}
@@ -151,6 +152,24 @@ export default function Home() {
           color="#10b981"
         />
       </div>
+=======
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-emerald-950 to-gray-900 text-white">
+      <header className="flex justify-between items-center px-8 lg:px-16 py-6">
+        <div className="flex items-center gap-2">
+          <Shield className="w-8 h-8 text-emerald-400" />
+          <span className="text-2xl font-bold">Fiflow</span>
+        </div>
+        <div>
+          <button
+            onClick={connectWallet}
+            className="bg-emerald-400 text-gray-900 px-8 py-3 rounded-full text-base font-semibold hover:bg-emerald-300 transition-all flex items-center gap-2"
+          >
+            <Wallet className="w-5 h-5" />
+            {walletDetected ? 'Connect Braavos' : 'Install Braavos Wallet'}
+          </button>
+        </div>
+      </header>
+>>>>>>> 129849f (som)
 
       {/* Background Image with Interactive Reveal */}
       <img
